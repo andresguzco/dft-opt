@@ -10,14 +10,6 @@ from mess import Hamiltonian, basisset
 from mess.structure import Structure, nuclear_energy
 
 
-def h2_hamiltonian(r: float, basis_name: str = "sto-3g", xc_method="lda"):
-    mol = Structure(
-        atomic_number=np.array([1, 1]),
-        position=np.array([[0.0, 0.0, 0.0], [r, 0.0, 0.0]]),
-    )
-    basis = basisset(mol, basis_name=basis_name)
-    return Hamiltonian(basis, xc_method=xc_method)
-
 @jax.jit
 @jax.vmap
 def energy(Z, H):
@@ -30,12 +22,13 @@ def loss_fn(z, h):
     return jnp.sum(energy(z, h))
 
 
-def optimize_h2(rs, num_iterations=128, learning_rate=0.1):
-    num_confs = len(rs)
-    H = [h2_hamiltonian(r) for r in rs]
-    num_orbitals = H[0].basis.num_orbitals
-    H = jax.tree.map(lambda *xs: jnp.stack(xs), *H)
+def optimize(Hs, num_iterations=128, learning_rate=0.1):
+    num_confs = len(Hs)
+    num_orbitals = Hs[0].basis.num_orbitals
+
+    H = jax.tree.map(lambda *xs: jnp.stack(xs), *Hs)
     Z = jnp.tile(jnp.eye(num_orbitals), (num_confs, 1, 1))
+
     optimiser = optax.adam(learning_rate=learning_rate)
     state = optimiser.init(Z)
 
@@ -50,7 +43,7 @@ def optimize_h2(rs, num_iterations=128, learning_rate=0.1):
     E_n = jax.vmap(nuclear_energy)(H.basis.structure)
     E_total = energy(Z, H) + E_n
 
-    return history, rs, E_total
+    return history, E_total
 
 
 def plot_results(history, rs, E_total):
@@ -68,15 +61,24 @@ def plot_results(history, rs, E_total):
     ax = sns.lineplot(x=rs, y=E_total)
     ax.set_xlabel("$H_2$ bond length (a.u.)")
     ax.set_ylabel("Total Energy (Hartree)")
-    plt.title("H2 Bond Length vs Total Energy")
+    plt.title("Bond Length vs Total Energy")
     plt.savefig('plots/distance.png')
     plt.close()
 
-
 def main():
+    basis_name: str = "sto-3g"
+    xc_method: str ="lda"
     num_confs = 64
     rs = np.linspace(0.6, 60, num_confs)
-    history, rs, E_total = optimize_h2(rs)
+
+    mols = [Structure(
+        atomic_number=np.array([1, 1]),
+        position=np.array([[0.0, 0.0, 0.0], [r, 0.0, 0.0]]),
+    ) for r in rs]
+    bases = [basisset(mol, basis_name=basis_name) for mol in mols]
+    Hamiltonians = [Hamiltonian(basis, xc_method=xc_method) for basis in bases]
+
+    history, E_total = optimize(Hamiltonians)
     plot_results(history, rs, E_total)
 
 
