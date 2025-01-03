@@ -7,12 +7,12 @@ import numpy as np
 import pandas as pd
 import warnings
 
-from tqdm import tqdm
+# from tqdm import tqdm
 from mess import Hamiltonian, basisset
 from mess.structure import nuclear_energy
 from pyscf import dft, scf
 from mess.interop import to_pyscf
-from dft_opt.plotting import plot_energy
+# from dft_opt.plotting import plot_energy
 from dft_opt.molecules import get_molecule
 from dft_opt.loss import energy_qr, energy_cayley
 
