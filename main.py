@@ -76,7 +76,7 @@ def optimize_energy(
 def timeit_multiple_runs(func, num_runs=5, warm_up=True, *args, **kwargs):
     if warm_up:
         print("Performing warm-up...")
-        func(*args, **kwargs)  # Warm-up run
+        func(*args, **kwargs)
 
     times = []
     result = None
@@ -158,11 +158,12 @@ def benchmark_methods(mol_names, energy_state, basis_name, methods, ortho_fns, o
                                 P = H.basis.density_matrix(C)
 
                             if method == "hfx":
-                                mf = scf.RHF(mol=scf_mol).density_fit()
+                                mf = scf.RHF(mol=scf_mol).run(P)
                             else:
-                                mf = dft.RKS(scf_mol, xc=method).density_fit()
+                                mf = dft.RKS(scf_mol, xc=method).run(P)
 
                             mf.verbose = 0  
+                            mf.stability()
 
                             print(f"P shape: {P.shape}")
 
