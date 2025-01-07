@@ -7,10 +7,10 @@ def cayley(Z, S):
     Skew_X = jnp.tril(Z, -1) - jnp.tril(Z, -1).T
     cayley = lambda N: jnl.solve(jnp.eye(N.shape[0]) + N, jnp.eye(N.shape[0]) - N)
     D = cayley(Skew_X)
-    D = D @ D
+    D_2 = D @ D
     L_inv_T = jnp.linalg.inv(jnp.linalg.cholesky(S).T)
-    C = jnp.matmul(L_inv_T, D)
-    return C
+    Q = jnp.matmul(L_inv_T, D_2)
+    return Q
 
 
 @jax.jit

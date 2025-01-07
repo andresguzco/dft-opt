@@ -1,109 +1,75 @@
-
 import numpy as np
-from pyquante2 import molecule
 from mess.structure import Structure
 
 
 def get_molecule(name, state):
     mol = MOLECULE_MAP[state][name]
-    atomic_number, position = zip(*[(a.Z, a.r) for a in mol])
-    atomic_number, position = [np.asarray(x) for x in (atomic_number, position)]
-    return Structure(atomic_number, position)
+    return mol
 
 
 MOLECULE_MAP = {
     "Ground": {
-        'CH': molecule(
-            [
-                (6, 0.0, 0.0, 0.0), 
-                (1, 0.0, 0.0, 1.1)
-            ],
-            units='Angstrom',
-            name='Methane'
+        'CH': Structure(
+            atomic_number=np.array([6, 1]),
+            position=np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 1.1]])
         ),
-        'O2': molecule(
-            [
-                (8, 0.0, 0.0, -0.6), 
-                (8, 0.0, 0.0, 0.6)
-            ],
-            units='Angstrom',
-            name='Oxygen'
+        'O2': Structure(
+            atomic_number=np.array([8, 8]),
+            position=np.array([[0.0, 0.0, -1], [0.0, 0.0, 1]])
         ),
-        'BeH': molecule(
-            [
-                (4, 0.0, 0.0, 0.0), 
-                (1, 0.0, 0.0, 1.3)
-            ],
-            units='Angstrom',
-            name='Beryllium Hydride'
+        'BeH': Structure(
+            atomic_number=np.array([4, 1]),
+            position=np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 1.3]])
         ),
-        'H2O': molecule(
-            [
-                (8, 0.0, 0.0, 0.0),
-                (1, 0.0, 0.76, 0.58),
-                (1, 0.0, -0.76, 0.58)
-            ],
-            units='Angstrom',
-            name='Water'
+        'H2O': Structure(
+            atomic_number=np.array([8, 1, 1]),
+            position=np.array([
+                [0.0, 0.0, 0.0],
+                [0.0, 0.76, 0.58],
+                [0.0, -0.76, 0.58]
+            ])
         ),
-        'C4H5N': molecule(
-            [
-                (6, 0.0, 0.0, 0.0), 
-                (6, 1.4, 0.0, 0.0), 
-                (7, 2.7, 0.0, 0.0), 
-                (6, 0.7, 1.2, 0.0),
-                (6, -0.7, 1.2, 0.0),
-                (1, 0.7, 2.3, 0.0),
-                (1, -0.7, 2.3, 0.0),
-                (1, 2.7, 1.0, 0.0),
-                (1, 2.7, -1.0, 0.0)
-            ],
-            units='Angstrom',
-            name='Pyrrole'
+        'C4H5N': Structure(
+            atomic_number=np.array([6, 6, 7, 6, 6, 1, 1, 1, 1]),
+            position=np.array([
+                [0.0, 0.0, 0.0],
+                [1.4, 0.0, 0.0],
+                [2.7, 0.0, 0.0],
+                [0.7, 1.2, 0.0],
+                [-0.7, 1.2, 0.0],
+                [0.7, 2.3, 0.0],
+                [-0.7, 2.3, 0.0],
+                [2.7, 1.0, 0.0],
+                [2.7, -1.0, 0.0]
+            ])
         ),
-        'C6H8O6': molecule(
-            [
-                (6, 0.0, 0.0, 0.0),
-                (6, 1.2, 0.0, 0.0),
-                (8, 0.6, 1.2, 0.0),
-                (6, 2.4, 0.0, 0.0),
-                (6, 3.6, 0.0, 0.0),
-                (8, 2.4, 1.2, 0.0),
-                (6, 4.8, 0.0, 0.0),
-                (1, 5.0, 1.0, 0.0),
-                (8, 0.0, -1.2, 0.0)
-            ],
-            units='Angstrom',
-            name='Ascorbic Acid (Vitamin C)'
+        'C6H8O6': Structure(
+            atomic_number=np.array([6, 6, 8, 6, 6, 8, 6, 1, 8]),
+            position=np.array([
+                [0.0, 0.0, 0.0],
+                [1.2, 0.0, 0.0],
+                [0.6, 1.2, 0.0],
+                [2.4, 0.0, 0.0],
+                [3.6, 0.0, 0.0],
+                [2.4, 1.2, 0.0],
+                [4.8, 0.0, 0.0],
+                [5.0, 1.0, 0.0],
+                [0.0, -1.2, 0.0]
+            ])
         )
     },
     "Excited": {
-        'CH': molecule(
-            [
-                (6, 0.0, 0.0, 0.0),
-                (1, 0.0, 0.0, 1.1)
-            ],
-            units='Angstrom',
-            charge=1,
-            name='Methane (Cationic Excited)'
+        'CH': Structure(
+            atomic_number=np.array([6, 1]),
+            position=np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 1.1]])
         ),
-        'O2': molecule(
-            [
-                (8, 0.0, 0.0, -0.6),
-                (8, 0.0, 0.0, 0.6)
-            ],
-            units='Angstrom',
-            charge=1,
-            name='Oxygen (Cationic Excited)'
+        'O2': Structure(
+            atomic_number=np.array([8, 8]),
+            position=np.array([[0.0, 0.0, -0.6], [0.0, 0.0, 0.6]])
         ),
-        'BeH': molecule(
-            [
-                (4, 0.0, 0.0, 0.0),
-                (1, 0.0, 0.0, 1.3)
-            ],
-            units='Angstrom',
-            charge=1,
-            name='Beryllium Hydride (Cationic Excited)'
+        'BeH': Structure(
+            atomic_number=np.array([4, 1]),
+            position=np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 1.3]])
         )
     }
 }
