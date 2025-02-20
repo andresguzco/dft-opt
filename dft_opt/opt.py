@@ -13,9 +13,9 @@ from pyscfad.scf import RHF
 class Hamiltonian(eqx.Module):
     mol: Mole
     kernel: RHF
-    ortho: str
+    ortho: int
 
-    def __init__(self, mol, kernel, ortho_fn='qr'):
+    def __init__(self, mol, kernel, ortho_fn=0):
         self.mol = mol
         self.kernel = kernel
         self.ortho = ortho_fn
@@ -30,8 +30,10 @@ class Hamiltonian(eqx.Module):
             return self.X @ cayley(Z)
         
     def __call__(self, P):
-        vff = self.kernel.get_veff(P)
-        return vff
+        vhf = self.kernel.get_veff(P)
+        h1e = self.hcore
+        e_tot = self.kernel.energy_tot(P, h1e, vhf)
+        return e_tot
     
     @property
     def X(self):

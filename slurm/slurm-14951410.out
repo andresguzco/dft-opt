@@ -1,0 +1,92 @@
+Thu Feb 20 14:48:02 EST 2025: Job 14951410 is allocated resources.
+Inside slurm_launcher.slrm (/var/spool/slurmd/job14951410/slurm_script). received arguments: main.py --molecule benzene --optimizer Adam
+Running computations on: cuda:0
+Parameters: [benzene / hfx / def2-SVP / Adam]
+Molecule built.
+Mean-field initialized.
+Traceback (most recent call last):
+  File "/h/aguzmanc/dft-opt/main.py", line 101, in <module>
+    main()
+
+  File "/h/aguzmanc/dft-opt/main.py", line 75, in main
+    mf.kernel()
+
+  File "<string>", line 2, in kernel
+  File "/h/aguzmanc/miniforge3/envs/dft_opt/lib/python3.11/site-packages/pyscfad/scf/hf.py", line 380, in scf
+    kernel(self, self.conv_tol, self.conv_tol_grad,
+
+  File "/h/aguzmanc/miniforge3/envs/dft_opt/lib/python3.11/site-packages/pyscfad/scf/hf.py", line 133, in kernel
+    _, mf_diis.Corth = mf.eig(fock, s1e)
+
+  File "/h/aguzmanc/miniforge3/envs/dft_opt/lib/python3.11/site-packages/pyscfad/scf/hf.py", line 397, in eig
+    return self._eigh(h, s)
+
+  File "/h/aguzmanc/miniforge3/envs/dft_opt/lib/python3.11/site-packages/pyscfad/scf/hf.py", line 394, in _eigh
+    return eigh(h, s)
+
+  File "/h/aguzmanc/miniforge3/envs/dft_opt/lib/python3.11/site-packages/pyscfad/backend/_jax/scipy/linalg.py", line 34, in eigh
+    return _eigh(a, b, lower, type, eigvals_only, deg_thresh)
+
+  File "/h/aguzmanc/miniforge3/envs/dft_opt/lib/python3.11/site-packages/pyscfad/backend/_jax/scipy/linalg.py", line 41, in _eigh
+    w, v = lax_linalg.eigh_gen(a, b, lower=lower, itype=itype, deg_thresh=deg_thresh)
+
+  File "/h/aguzmanc/miniforge3/envs/dft_opt/lib/python3.11/site-packages/pyscfad/backend/_jax/lax/linalg.py", line 37, in eigh_gen
+    w, v = eigh_gen_p.bind(a, b, lower=lower, itype=itype, deg_thresh=deg_thresh)
+
+  File "/h/aguzmanc/miniforge3/envs/dft_opt/lib/python3.11/site-packages/pyscfad/backend/_jax/lax/linalg.py", line 41, in _eigh_gen_impl
+    w, v = dispatch.apply_primitive(
+
+jax._src.source_info_util.JaxStackTraceBeforeTransformation: NotImplementedError: Generalized eigh is only implemented for CPU.
+
+The preceding stack trace is the source of the JAX operation that, once transformed by JAX, triggered the following exception.
+
+--------------------
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/h/aguzmanc/dft-opt/main.py", line 101, in <module>
+    main()
+  File "/h/aguzmanc/dft-opt/main.py", line 75, in main
+    mf.kernel()
+  File "<string>", line 2, in kernel
+  File "/h/aguzmanc/miniforge3/envs/dft_opt/lib/python3.11/site-packages/pyscfad/scf/hf.py", line 380, in scf
+    kernel(self, self.conv_tol, self.conv_tol_grad,
+  File "/h/aguzmanc/miniforge3/envs/dft_opt/lib/python3.11/site-packages/pyscfad/scf/hf.py", line 133, in kernel
+    _, mf_diis.Corth = mf.eig(fock, s1e)
+                       ^^^^^^^^^^^^^^^^^
+  File "/h/aguzmanc/miniforge3/envs/dft_opt/lib/python3.11/site-packages/pyscfad/scf/hf.py", line 397, in eig
+    return self._eigh(h, s)
+           ^^^^^^^^^^^^^^^^
+  File "/h/aguzmanc/miniforge3/envs/dft_opt/lib/python3.11/site-packages/pyscfad/scf/hf.py", line 394, in _eigh
+    return eigh(h, s)
+           ^^^^^^^^^^
+  File "/h/aguzmanc/miniforge3/envs/dft_opt/lib/python3.11/site-packages/pyscfad/backend/_jax/scipy/linalg.py", line 34, in eigh
+    return _eigh(a, b, lower, type, eigvals_only, deg_thresh)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/h/aguzmanc/miniforge3/envs/dft_opt/lib/python3.11/site-packages/pyscfad/backend/_jax/scipy/linalg.py", line 41, in _eigh
+    w, v = lax_linalg.eigh_gen(a, b, lower=lower, itype=itype, deg_thresh=deg_thresh)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/h/aguzmanc/miniforge3/envs/dft_opt/lib/python3.11/site-packages/pyscfad/backend/_jax/lax/linalg.py", line 37, in eigh_gen
+    w, v = eigh_gen_p.bind(a, b, lower=lower, itype=itype, deg_thresh=deg_thresh)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/h/aguzmanc/miniforge3/envs/dft_opt/lib/python3.11/site-packages/jax/_src/core.py", line 420, in bind
+    return self.bind_with_trace(find_top_trace(args), args, params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/h/aguzmanc/miniforge3/envs/dft_opt/lib/python3.11/site-packages/jax/_src/core.py", line 423, in bind_with_trace
+    out = trace.process_primitive(self, map(trace.full_raise, args), params)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/h/aguzmanc/miniforge3/envs/dft_opt/lib/python3.11/site-packages/jax/_src/core.py", line 913, in process_primitive
+    return primitive.impl(*tracers, **params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/h/aguzmanc/miniforge3/envs/dft_opt/lib/python3.11/site-packages/pyscfad/backend/_jax/lax/linalg.py", line 41, in _eigh_gen_impl
+    w, v = dispatch.apply_primitive(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/h/aguzmanc/miniforge3/envs/dft_opt/lib/python3.11/site-packages/jax/_src/dispatch.py", line 87, in apply_primitive
+    outs = fun(*args)
+           ^^^^^^^^^^
+  File "/h/aguzmanc/miniforge3/envs/dft_opt/lib/python3.11/site-packages/pyscfad/backend/_jax/lax/linalg.py", line 165, in _eigh_gen_lowering
+    raise NotImplementedError("Generalized eigh is only implemented for CPU.")
+NotImplementedError: Generalized eigh is only implemented for CPU.
+--------------------
+For simplicity, JAX has removed its internal frames from the traceback of the following exception. Set JAX_TRACEBACK_FILTERING=off to include these.

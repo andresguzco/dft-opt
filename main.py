@@ -31,12 +31,10 @@ def optimize_energy(H, args):
     Z, E, history = train_fn(H, args.num_iter, args.lr)
     elapsed_time = (time.time() - start_time) * 1000
 
-    E_n = H.hcore()
-
     if history is not None:
-        plot_energy([val + E_n.item() for val in history], args)
+        plot_energy([val for val in history], args)
 
-    return E + E_n.item(), Z, elapsed_time
+    return E , Z, elapsed_time
 
 
 def main():
@@ -45,7 +43,7 @@ def main():
     ####################################
     parser = argparse.ArgumentParser(description="Run DFT optimization benchmarks.")
     parser.add_argument("--method", type=str, default="hfx", help="Method to use (e.g., hfx, lda)")
-    parser.add_argument("--basis", type=str, default="6-31g", help="Basis set to use (e.g., cc-pVDZ)")
+    parser.add_argument("--basis", type=str, default="def2-SVP", help="Basis set to use (e.g., cc-pVDZ)")
     parser.add_argument("--molecule", type=str, required=True, help="Molecule name (e.g., H2O)")
     parser.add_argument("--optimizer", type=str, default="LBFGS", help="Optimizer to use")
     parser.add_argument("--ortho_fn", type=str, default="qr", help="Orthogonalization function to use")
@@ -87,7 +85,7 @@ def main():
     ####################################
     # Solve with MESS
     ####################################
-    H = Hamiltonian(mol=mol, kernel=mf, ortho_fn=args.ortho_fn)
+    H = Hamiltonian(mol=mol, kernel=mf, ortho_fn=0 if args.ortho_fn == 'qr' else 1)
     E, Z, mess_time = optimize_energy(H=H, args=args)
     print(f"MESS Energy: [{E:.2f}], Time: [{mess_time:.2f} ms]", flush=True)
     ####################################
