@@ -1,75 +1,35 @@
-import numpy as np
-from mess.structure import Structure
+from pyscfad import gto
 
 
-def get_molecule(name, state):
-    mol = MOLECULE_MAP[state][name]
+def get_molecule(name, basis):
+    structure = PYSCF_MAP[name]
+    mol = gto.Mole()
+    mol.atom = structure
+    mol.basis = basis
+    mol.verbose = 0
+    mol.build(trace_coords=True, trace_exp=True, trace_ctr_coeff=True)  
     return mol
 
 
-MOLECULE_MAP = {
-    "Ground": {
-        'CH': Structure(
-            atomic_number=np.array([6, 1]),
-            position=np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 1.1]])
-        ),
-        'O2': Structure(
-            atomic_number=np.array([8, 8]),
-            position=np.array([[0.0, 0.0, -1], [0.0, 0.0, 1]])
-        ),
-        'BeH': Structure(
-            atomic_number=np.array([4, 1]),
-            position=np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 1.3]])
-        ),
-        'H2O': Structure(
-            atomic_number=np.array([8, 1, 1]),
-            position=np.array([
-                [0.0, 0.0, 0.0],
-                [0.0, 0.76, 0.58],
-                [0.0, -0.76, 0.58]
-            ])
-        ),
-        'C4H5N': Structure(
-            atomic_number=np.array([6, 6, 7, 6, 6, 1, 1, 1, 1]),
-            position=np.array([
-                [0.0, 0.0, 0.0],
-                [1.4, 0.0, 0.0],
-                [2.7, 0.0, 0.0],
-                [0.7, 1.2, 0.0],
-                [-0.7, 1.2, 0.0],
-                [0.7, 2.3, 0.0],
-                [-0.7, 2.3, 0.0],
-                [2.7, 1.0, 0.0],
-                [2.7, -1.0, 0.0]
-            ])
-        ),
-        'C6H8O6': Structure(
-            atomic_number=np.array([6, 6, 8, 6, 6, 8, 6, 1, 8]),
-            position=np.array([
-                [0.0, 0.0, 0.0],
-                [1.2, 0.0, 0.0],
-                [0.6, 1.2, 0.0],
-                [2.4, 0.0, 0.0],
-                [3.6, 0.0, 0.0],
-                [2.4, 1.2, 0.0],
-                [4.8, 0.0, 0.0],
-                [5.0, 1.0, 0.0],
-                [0.0, -1.2, 0.0]
-            ])
-        )
-    },
-    "Excited": {
-        'CH': Structure(
-            atomic_number=np.array([6, 1]),
-            position=np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 1.1]])
-        ),
-        'O2': Structure(
-            atomic_number=np.array([8, 8]),
-            position=np.array([[0.0, 0.0, -0.6], [0.0, 0.0, 0.6]])
-        ),
-        'BeH': Structure(
-            atomic_number=np.array([4, 1]),
-            position=np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 1.3]])
-        )
-    }
+PYSCF_MAP = {
+    'benzene': [[ 'C'  , ( 4.673795 ,   6.280948 , 0.00  ) ],
+            [ 'C'  , ( 5.901190 ,   5.572311 , 0.00  ) ],
+            [ 'C'  , ( 5.901190 ,   4.155037 , 0.00  ) ],
+            [ 'C'  , ( 4.673795 ,   3.446400 , 0.00  ) ],
+            [ 'C'  , ( 3.446400 ,   4.155037 , 0.00  ) ],
+            [ 'C'  , ( 3.446400 ,   5.572311 , 0.00  ) ],
+            [ 'H'  , ( 4.673795 ,   7.376888 , 0.00  ) ],
+            [ 'H'  , ( 6.850301 ,   6.120281 , 0.00  ) ],
+            [ 'H'  , ( 6.850301 ,   3.607068 , 0.00  ) ],
+            [ 'H'  , ( 4.673795 ,   2.350461 , 0.00  ) ],
+            [ 'H'  , ( 2.497289 ,   3.607068 , 0.00  ) ],
+            [ 'H'  , ( 2.497289 ,   6.120281 , 0.00  ) ]],
+    'graphene': [['C', (0.00,  0.00,  0.00)],
+            ['C', (1.23,  0.71,  0.00)],
+            ['C', (2.46,  0.00,  0.00)],
+            ['C', (3.69,  0.71,  0.00)],
+            ['C', (1.23,  2.132, 0.00)],
+            ['C', (2.46,  2.842, 0.00)],
+            ['C', (3.69,  2.132, 0.00)],
+            ['C', (4.92,  2.842, 0.00)]]
 }

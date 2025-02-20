@@ -1,203 +1,103 @@
+####################################
+# Imports
+####################################
+# import os
+# os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
+#
+import jax
 import time
-import optax
-import jax.numpy as jnp
-import jax.numpy.linalg as jnl
-import optimistix as optx
-import numpy as np
-import pandas as pd
+import argparse
 import warnings
 
-from mess import Hamiltonian, basisset
-from mess.structure import nuclear_energy
-from pyscf import dft, scf
-from mess.interop import to_pyscf
-from dft_opt.molecules import get_molecule
-from dft_opt.loss import energy_qr, energy_cayley, cayley
+from pyscfad import scf, dft
+from dft_opt import get_molecule, solve, optimize, plot_energy, validate, Hamiltonian
+####################################
 
+####################################
+# Enable 64-bit precision
+#########################################
+jax.config.update("jax_enable_x64", True)
+#########################################
 
-def optimize_energy(
-        method, 
-        basis, 
-        E_n,
-        ortho_fn, 
-        optimizer,
-        num_iterations=200, 
-        learning_rate=0.1
-        ):
-    
-    H = Hamiltonian(basis, xc_method=method)
-    n = basis.num_orbitals
-    Z = jnp.eye(n)  
+######################################
+# Optimization and Benchmark functions
+######################################
+def optimize_energy(H, args):    
+    train_fn = solve if args.optimizer == "LBFGS" else  optimize
+    train_fn(H, 2, args.lr)
+    print(f"Warmup complete!", flush=True)
 
-    if ortho_fn == "cayley":
-        S = H.X.T @ H.X
-        loss_fn = energy_cayley
-    else:
-        S = jnp.eye(n)
-        loss_fn = energy_qr
+    start_time = time.time()
+    Z, E, history = train_fn(H, args.num_iter, args.lr)
+    elapsed_time = (time.time() - start_time) * 1000
 
-    start_time = time.time() 
+    E_n = H.hcore()
 
-    if optimizer == "LBFGS":
-        solver = optx.BFGS(atol=1e-6, rtol=1e-5)
-        sol = optx.minimise(lambda Z, _: loss_fn(Z, H, S)[0], solver, Z, max_steps=2000)
-        E_total = loss_fn(sol.value, H, S)[0] + E_n
-        end_time = time.time()
-        elapsed_time = (end_time - start_time) * 1000 
-        return E_total, sol.value, elapsed_time
-    
-    elif optimizer == "Adam":
-        counter = 0
-        history = []
-        optimiser = optax.adam(learning_rate=learning_rate)
-        state = optimiser.init(Z)
+    if history is not None:
+        plot_energy([val + E_n.item() for val in history], args)
 
-        for _ in range(num_iterations):
-            e, grads = loss_fn(Z, H, S)
-            e += E_n
-            updates, state = optimiser.update(grads, state)
-            Z = optax.apply_updates(Z, updates)
-            history.append(e)
+    return E + E_n.item(), Z, elapsed_time
 
-            if len(history)> 1 and (history[-1] - history[-2]) / history[-2] < 1e-3:
-                counter += 1
-
-            if counter > 5:
-                break
-
-        end_time = time.time()
-        elapsed_time = (end_time - start_time) * 1000 
-        return jnp.stack(history)[-1], Z, elapsed_time
-    
-    else:
-        raise ValueError("Invalid optimizer")
-    
-
-def timeit_multiple_runs(func, num_runs=5, warm_up=True, *args, **kwargs):
-    if warm_up:
-        print("Performing warm-up...")
-        func(*args, **kwargs)
-
-    times = []
-    result = None
-    for _ in range(num_runs):
-        start_time = time.time()
-        result = func(*args, **kwargs)
-        elapsed_time = (time.time() - start_time) * 1000
-        times.append(elapsed_time)
-    avg_time = np.mean(times)
-    return avg_time, result
-
-
-def mess_benchmark(method, basis, E_n, ortho_fn, optimizer, num_runs=5):
-    avg_time, res = timeit_multiple_runs(
-        optimize_energy, num_runs=num_runs, warm_up=True,
-        method=method, basis=basis, E_n=E_n, ortho_fn=ortho_fn, optimizer=optimizer
-    )
-    return avg_time, res
-
-
-def pyscf_benchmark(mol, basis_name, method, num_runs=5, warm_up=False):
-    scf_mol = to_pyscf(mol, basis_name)
-    scf_mol.verbose = 0
-
-    def pyscf_run():
-        if method == "hfx":
-            scf_instance = scf.RHF(scf_mol)
-        else:
-            scf_instance = dft.RKS(scf_mol, xc=method)
-        return scf_instance.kernel()
-
-    avg_time, pyscf_energy = timeit_multiple_runs(pyscf_run, num_runs=num_runs, warm_up=warm_up)
-    return avg_time, pyscf_energy
-
-
-def benchmark_methods(mol_names, energy_state, basis_name, methods, ortho_fns, optimizers, num_runs=5, validate=False):
-    time_results = {}
-    energy_results = {}
-
-    for mol_name in mol_names:
-        mol = get_molecule(mol_name, energy_state)
-        scf_mol = to_pyscf(mol, basis_name)
-
-        basis = basisset(mol, basis_name)
-        E_n = nuclear_energy(mol)
-        print(f"\n=== Benchmarking for Molecule: {mol_name.upper()} with n={basis.num_orbitals} ===")
-
-        for method in methods:
-            H = Hamiltonian(basis, xc_method=method)
-            identifier = f"{mol_name} {method} / {basis_name}"
-            time_results[identifier] = {}
-            energy_results[identifier] = {}
-
-            pyscf_time, pyscf_energy = pyscf_benchmark(mol, basis_name, method, num_runs)
-            time_results[identifier]["PySCF"] = pyscf_time
-            energy_results[identifier]["PySCF"] = pyscf_energy
-
-            print(f"PySCF {method.upper()} Execution Time: {pyscf_time:.2f} ms")
-            print(f"PySCF Energy: {pyscf_energy:.2f}")
-
-            for optimizer in optimizers:
-                for ortho_fn in ortho_fns:
-                    try:
-                        mess_time, mess_result = mess_benchmark(method, basis, E_n, ortho_fn, optimizer, num_runs)
-                        mess_energy = mess_result[0]
-                        mess_column = f"MESS_{optimizer}_{ortho_fn}"
-                        time_results[identifier][mess_column] = mess_time
-                        energy_results[identifier][mess_column] = mess_energy
-
-                        print(f"MESS {method.upper()} Execution Time ({optimizer}, {ortho_fn}): {mess_time:.2f} ms")
-                        print(f"MESS Energy: {mess_energy:.2f}")
-                        
-                        if validate:
-                            if ortho_fn == "cayley":
-                                C = H.X @ cayley(mess_result[1], H.X.T @ H.X)
-                                P = H.basis.density_matrix(C)
-                            else:
-                                C = H.X @ jnl.qr(mess_result[1]).Q
-                                P = H.basis.density_matrix(C)
-
-                            if method == "hfx":
-                                mf = scf.RHF(mol=scf_mol).run(P)
-                            else:
-                                mf = dft.RKS(scf_mol, xc=method).run(P)
-
-                            mf.verbose = 0  
-                            mf.stability()
-
-                            print(f"P shape: {P.shape}")
-
-                            hcore = mf.get_hcore(scf_mol)
-                            veff = mf.get_veff(scf_mol, P)
-                            total_energy = mf.energy_tot(P, hcore, veff)
-
-                            print(f"PySCF Energy with MESS Density: {total_energy:.2f}") 
-                    
-                    except Exception as e:
-                        raise ValueError(f"Problem with ({method, optimizer, ortho_fn})")
-
-    time_df = pd.DataFrame.from_dict(time_results, orient="index")
-    energy_df = pd.DataFrame.from_dict(energy_results, orient="index")
-
-    print(time_df.round(2))
-    print(energy_df.round(2))
 
 def main():
-    # TODO: Add proper check for the density matrix. DONE
-    # TODO: Check the orthogonal matrix with PySCF. DONE
-    # TODO: Check Wu's Riemannian Adam paper on Slack
-    # TODO: Look at the convergence rate of the energy. Look at early stopping with relative change. DONE
+    ####################################
+    # Parse command line arguments
+    ####################################
+    parser = argparse.ArgumentParser(description="Run DFT optimization benchmarks.")
+    parser.add_argument("--method", type=str, default="hfx", help="Method to use (e.g., hfx, lda)")
+    parser.add_argument("--basis", type=str, default="6-31g", help="Basis set to use (e.g., cc-pVDZ)")
+    parser.add_argument("--molecule", type=str, required=True, help="Molecule name (e.g., H2O)")
+    parser.add_argument("--optimizer", type=str, default="LBFGS", help="Optimizer to use")
+    parser.add_argument("--ortho_fn", type=str, default="qr", help="Orthogonalization function to use")
+    parser.add_argument("--num_iter", type=int, default=500, help="Number of iterations for optimizer")
+    parser.add_argument("--lr", type=float, default=0.01, help="Learning rate for Adam optimizer")
+    args = parser.parse_args()
+    ####################################
 
-    warnings.filterwarnings("ignore")
+    ####################################
+    # Suppress UserWarnings
+    ####################################
+    warnings.filterwarnings("ignore", category=UserWarning)
+    ####################################
 
-    mol_names = ["H2O", "C4H5N", "C6H8O6"]
-    energy_state = "Ground"
-    basis_name = "cc-pVDZ"
-    methods = ["lda", "hfx"]
-    ortho_fns = ["qr", "cayley"]
-    optimizers = ["LBFGS", "Adam"]
+    ####################################
+    # Set up the molecule and basis
+    ####################################
+    print(f"Running computations on: {jax.devices()[0] }", flush=True)
+    print(f"Parameters: [{args.molecule} / {args.method} / {args.basis} / {args.optimizer}]", flush=True)
+    ####################################
 
-    benchmark_methods(mol_names, energy_state, basis_name, methods, ortho_fns, optimizers)
+    ####################################
+    # Benchmark with PySCF
+    ####################################
+    mol = get_molecule(args.molecule, args.basis)
+    print(f"Molecule built.")
+    mf = scf.RHF(mol) if args.method == "hfx" else dft.RKS(mol, xc=args.method)
+    print(f"Mean-field initialized.")
+    mf.kernel()
+    print(f"Mean-field computed.")
+
+    # Benchmark PySCF
+    start_time = time.time()
+    pyscf_energy = mf.kernel()
+    pyscf_time = (time.time() - start_time) * 1000
+    print(f"PySCF Energy: [{pyscf_energy:.2f}], Time: [{pyscf_time:.2f} ms]", flush=True)
+    ####################################
+    
+    ####################################
+    # Solve with MESS
+    ####################################
+    H = Hamiltonian(mol=mol, kernel=mf, ortho_fn=args.ortho_fn)
+    E, Z, mess_time = optimize_energy(H=H, args=args)
+    print(f"MESS Energy: [{E:.2f}], Time: [{mess_time:.2f} ms]", flush=True)
+    ####################################
+    
+    ####################################
+    # Check if the optimized Z is valid
+    ####################################
+    validate(Z, H, sum(mol.nelec))
+    print("All tests passed!", flush=True)
+    ####################################
 
 if __name__ == "__main__":
     main()
