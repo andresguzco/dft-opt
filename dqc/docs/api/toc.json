@@ -1,0 +1,59 @@
+{
+  "Systems (dqc)": {
+    "module": "dqc.system",
+    "prefix": "dqc",
+    "desc": "physical systems",
+    "api": {
+      "Mol": "isolated molecules",
+      "Sol": "periodic boundary system"
+    }
+  },
+  "QCCalc (dqc)": {
+    "module": "dqc.qccalc",
+    "prefix": "dqc",
+    "desc": "quantum chemistry calculations",
+    "api": {
+      "HF": "Hartree-Fock",
+      "KS": "Kohn-Sham"
+    }
+  },
+  "Other APIs (dqc)": {
+    "module": "dqc.api",
+    "prefix": "dqc",
+    "desc": "utilities API",
+    "api": "allfuncs"
+  },
+  "Hamilton (dqc.hamilton)": {
+    "module": "dqc.hamilton",
+    "prefix": "dqc.hamilton",
+    "desc": "Hamiltonian objects",
+    "api": {
+      "HamiltonCGTO": "",
+      "HamiltonCGTO_PBC": ""
+    }
+  },
+  "XC (dqc.xc)": {
+    "module": "dqc.xc",
+    "prefix": "dqc.xc",
+    "desc": "Custom xc functionals",
+    "api": {
+      "CustomXC": ""
+    }
+  },
+  "Utilities (dqc.utils)": {
+    "module": "dqc.utils",
+    "prefix": "dqc.utils",
+    "desc": "Data structures & unit converter",
+    "api": {
+      "SpinParam": "",
+      "ValGrad": "",
+      "convert_length": "",
+      "convert_time": "",
+      "convert_freq": "",
+      "convert_ir_ints": "",
+      "convert_raman_ints": "",
+      "convert_edipole": "",
+      "convert_equadrupole": ""
+    }
+  }
+}

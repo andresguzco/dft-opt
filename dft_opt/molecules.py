@@ -1,14 +1,15 @@
-from pyscfad import gto
+import torch
+from pyscf import gto
 
 
 def get_molecule(name, basis):
-    structure = PYSCF_MAP[name]
-    mol = gto.Mole()
-    mol.atom = structure
-    mol.basis = basis
+    info = PYSCF_MAP[name]
+    mol = gto.M(atom=info, basis=basis)
     mol.verbose = 0
-    mol.build(trace_coords=True, trace_exp=True, trace_ctr_coeff=True)  
-    return mol
+    atomzs = [val[0] for val in info]
+    atompos = torch.cat([torch.tensor(val[1]) for val in info], dim=0).view(-1, 3)
+    structure = (atomzs, atompos)
+    return mol, structure
 
 
 PYSCF_MAP = {
@@ -31,5 +32,8 @@ PYSCF_MAP = {
             ['C', (1.23,  2.132, 0.00)],
             ['C', (2.46,  2.842, 0.00)],
             ['C', (3.69,  2.132, 0.00)],
-            ['C', (4.92,  2.842, 0.00)]]
+            ['C', (4.92,  2.842, 0.00)]],
+    'water': [['O', ( 0.000000,  0.000000,  0.000000)],
+        ['H', ( 0.757459,  0.521790,  0.000000)],
+        ['H', (-0.757459,  0.521790,  0.000000)]]
 }

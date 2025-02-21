@@ -1,40 +1,26 @@
 ####################################
 # Imports
 ####################################
-# import os
-# os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
-#
-import jax
+import dqc
 import time
+import torch
 import argparse
-import warnings
 
-from pyscfad import scf, dft
-from dft_opt import get_molecule, solve, optimize, plot_energy, validate, Hamiltonian
+from dft_opt import get_molecule
+from pyscf import scf, dft
 ####################################
 
-####################################
-# Enable 64-bit precision
-#########################################
-jax.config.update("jax_enable_x64", True)
-#########################################
 
 ######################################
-# Optimization and Benchmark functions
+# Optimization and Benchmark fn
 ######################################
-def optimize_energy(H, args):    
-    train_fn = solve if args.optimizer == "LBFGS" else  optimize
-    train_fn(H, 2, args.lr)
-    print(f"Warmup complete!", flush=True)
-
+def optimize_energy(basis, structure, ortho_fn):
     start_time = time.time()
-    Z, E, history = train_fn(H, args.num_iter, args.lr)
-    elapsed_time = (time.time() - start_time) * 1000
-
-    if history is not None:
-        plot_energy([val for val in history], args)
-
-    return E , Z, elapsed_time
+    m = dqc.Mol(structure, basis=basis, ao_parameterizer=ortho_fn)
+    qc = dqc.HF(m).run()
+    ene = qc.energy()
+    return ene, (time.time() - start_time) * 1000
+####################################
 
 
 def main():
@@ -53,29 +39,20 @@ def main():
     ####################################
 
     ####################################
-    # Suppress UserWarnings
-    ####################################
-    warnings.filterwarnings("ignore", category=UserWarning)
-    ####################################
-
-    ####################################
     # Set up the molecule and basis
     ####################################
-    print(f"Running computations on: {jax.devices()[0] }", flush=True)
-    print(f"Parameters: [{args.molecule} / {args.method} / {args.basis} / {args.optimizer}]", flush=True)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Running computations on: {device}", flush=True)
+    print(f"Parameters: [{args.molecule} / {args.method} / {args.basis} / {args.optimizer} / {args.ortho_fn}]", flush=True)
     ####################################
 
     ####################################
     # Benchmark with PySCF
     ####################################
-    mol = get_molecule(args.molecule, args.basis)
-    print(f"Molecule built.")
+    mol, structure = get_molecule(args.molecule, args.basis)
     mf = scf.RHF(mol) if args.method == "hfx" else dft.RKS(mol, xc=args.method)
-    print(f"Mean-field initialized.")
     mf.kernel()
-    print(f"Mean-field computed.")
 
-    # Benchmark PySCF
     start_time = time.time()
     pyscf_energy = mf.kernel()
     pyscf_time = (time.time() - start_time) * 1000
@@ -85,16 +62,15 @@ def main():
     ####################################
     # Solve with MESS
     ####################################
-    H = Hamiltonian(mol=mol, kernel=mf, ortho_fn=0 if args.ortho_fn == 'qr' else 1)
-    E, Z, mess_time = optimize_energy(H=H, args=args)
-    print(f"MESS Energy: [{E:.2f}], Time: [{mess_time:.2f} ms]", flush=True)
+    E, DQC_time = optimize_energy(basis=args.basis, structure=structure, ortho_fn=args.ortho_fn)
+    print(f"DQC Energy: [{E:.2f}], Time: [{DQC_time:.2f} ms]", flush=True)
     ####################################
     
     ####################################
     # Check if the optimized Z is valid
     ####################################
-    validate(Z, H, sum(mol.nelec))
-    print("All tests passed!", flush=True)
+    # validate(Z, H, sum(mol.nelec))
+    # print("All tests passed!", flush=True)
     ####################################
 
 if __name__ == "__main__":
