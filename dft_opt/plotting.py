@@ -8,6 +8,6 @@ def plot_energy(history, args):
     ax = sns.lineplot(data=history)
     ax.set_xlabel("Iteration")
     ax.set_ylabel("Total energy (Hartree)")
-    plt.title("Energy Optimization of" + args.molecule)
-    plt.savefig(f'plots/energy_{args.molecule}_{args.basis}_{args.optimizer}_{args.method}.png')
+    plt.title("Energy Optimization of " + args.molecule)
+    plt.savefig(f'plots/energy_{args.molecule}_{args.basis}_{args.optimizer}.png')
     plt.close()
