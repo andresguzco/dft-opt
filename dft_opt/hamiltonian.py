@@ -2,7 +2,6 @@ import equinox as eqx
 import jax.numpy as jnp
 import jax.numpy.linalg as jnl
 from .orthonormalize import cayley
-
 from pyscfad.gto import Mole
 from pyscfad.dft import RKS
 from pyscfad.scf import RHF
