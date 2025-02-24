@@ -6,11 +6,11 @@ import jax.numpy as jnp
 import optimistix as optx
 
 
-def get_solver(optimizer, atol=1e-4, rtol=1e-4):
+def get_solver(optimizer, atol=1e-4, rtol=1e-4, lr=0.001):
     if optimizer == "BFGS":
         return optx.BFGS(atol=atol, rtol=rtol)
     elif optimizer == "Adam":
-        optim = optax.adam(learning_rate=0.001)
+        optim = optax.adam(learning_rate=lr)
         return optx.OptaxMinimiser(optim, atol=atol, rtol=rtol)
     elif optimizer == "CG":
         return optx.NonlinearCG (atol=atol, rtol=rtol)
@@ -20,7 +20,7 @@ def get_solver(optimizer, atol=1e-4, rtol=1e-4):
 
 def solve(H, iter, lr, optimizer):
     n, _ = H.X.shape
-    Z_init = jnp.eye(n)
+    Z_init = jnp.eye(n, device=H.X.device)
     
     @jax.jit
     def energy(Z, _):
@@ -29,7 +29,7 @@ def solve(H, iter, lr, optimizer):
         out = H(P)
         return out
 
-    solver = get_solver(optimizer)
+    solver = get_solver(optimizer=optimizer, lr=lr)
 
     start_time = time.time()
     sol = optx.minimise(energy, solver, Z_init, max_steps=iter)
@@ -49,7 +49,7 @@ def solve_with_history(H, iter, lr, optimizer):
         aux = None
         return e, aux
 
-    solver = get_solver(optimizer)
+    solver = get_solver(optimizer=optimizer, lr=lr)
 
     args = None
     f_struct = jax.ShapeDtypeStruct((), jnp.float64)

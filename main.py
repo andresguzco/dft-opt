@@ -4,16 +4,15 @@
 import jax
 import time
 import argparse
-import warnings
 
-from pyscfad import scf, dft
+from pyscfad import scf
 from dft_opt import (
     get_molecule, 
     solve, 
     solve_with_history, 
     plot_energy, 
     validate, 
-    Hamiltonian
+    Hamiltonian,
 )
 ####################################
 
@@ -32,6 +31,7 @@ def main():
     parser.add_argument("--basis", type=str, default="def2-SVP", help="Basis set to use (e.g., cc-pVDZ)")
     parser.add_argument("--molecule", type=str, required=True, help="Molecule name (e.g., H2O)")
     parser.add_argument("--optimizer", type=str, default="BFGS", help="Optimizer to use")
+    parser.add_argument("--ortho", type=str, default="qr", help="Orthogonalization method to use")
     parser.add_argument("--num_iter", type=int, default=4000, help="Number of iterations for optimizer")
     parser.add_argument("--lr", type=float, default=0.001, help="Learning rate for Adam optimizer")
     args = parser.parse_args()
@@ -48,6 +48,8 @@ def main():
     ####################################
     mol = get_molecule(args.molecule, args.basis)
     mf = scf.RHF(mol)
+    mf.kernel()
+
     start_time = time.time()
     pyscf_energy = mf.kernel()
     pyscf_time = (time.time() - start_time) * 1000
@@ -57,7 +59,7 @@ def main():
     ####################################
     # Solve with JAX
     ####################################
-    H = Hamiltonian(mol=mol, kernel=mf)
+    H = Hamiltonian(mol=mol, kernel=mf, orthos=args.ortho)
     Z, E, elapsed_time = solve(H, args.num_iter, args.lr, args.optimizer)
     print(f"JAX Energy: [{E:.2f}], Time: [{elapsed_time:.2f} ms]", flush=True)
     ####################################

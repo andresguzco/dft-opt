@@ -1,0 +1,13 @@
+Mon Feb 24 14:01:40 EST 2025: Job 15025849 is allocated resources.
+Inside slurm_launcher.slrm (/var/spool/slurmd/job15025849/slurm_script). received arguments: main.py --molecule water --optimizer BFGS --ortho cayley
+Parameters: [water / def2-SVP / BFGS]
+WARNING:2025-02-24 14:01:49,001:jax._src.xla_bridge:966: An NVIDIA GPU may be present on this machine, but a CUDA-enabled jaxlib is not installed. Falling back to cpu.
+/h/aguzmanc/miniforge3/envs/dft_opt_jax/lib/python3.12/site-packages/pyscf/gto/mole.py:1293: UserWarning: Function mol.dumps drops attribute coords because it is not JSON-serializable
+  warnings.warn(msg)
+/h/aguzmanc/miniforge3/envs/dft_opt_jax/lib/python3.12/site-packages/pyscf/gto/mole.py:1293: UserWarning: Function mol.dumps drops attribute exp because it is not JSON-serializable
+  warnings.warn(msg)
+/h/aguzmanc/miniforge3/envs/dft_opt_jax/lib/python3.12/site-packages/pyscf/gto/mole.py:1293: UserWarning: Function mol.dumps drops attribute ctr_coeff because it is not JSON-serializable
+  warnings.warn(msg)
+PySCF Energy: [-74.47], Time: [302.55 ms]
+JAX Energy: [-74.47], Time: [1158.15 ms]
+All tests passed!

@@ -1,37 +1,39 @@
 import equinox as eqx
 import jax.numpy as jnp
 import jax.numpy.linalg as jnl
-from .orthonormalize import cayley
+from .orthonormalize import cayley, qr
 from pyscfad.gto import Mole
-from pyscfad.dft import RKS
+# from pyscfad.dft import RKS
 from pyscfad.scf import RHF
-
+from typing import Union
+    
 
 class Hamiltonian(eqx.Module):
-    mol: Mole
-    kernel: RHF
+    _mol: Mole
+    _kernel: RHF
+    _orthos: Union[cayley, qr]
 
-    def __init__(self, mol, kernel):
-        self.mol = mol
-        self.kernel = kernel
+    def __init__(self, mol: Mole, kernel: RHF, orthos: str):
+        self._mol = mol
+        self._kernel = kernel
+        self._orthos = cayley if orthos == "cayley" else qr
     
-    def density_matrix(self, C):
+    def density_matrix(self, C: jnp.ndarray) ->jnp.ndarray:
         return jnp.einsum("k,ik,jk->ij", self.occupancy, C, C)
 
-    def orthonormalize(self, Z):
-        Q = jnl.qr(Z).Q
-        # Q = cayley(Z)
+    def orthonormalize(self, Z: jnp.ndarray) -> jnp.ndarray:
+        Q = self._orthos(Z)
         return Q
 
-    def __call__(self, P):
-        h1e = self.kernel.get_hcore()
-        vhf = self.kernel.get_veff(dm=P)
-        e_tot = self.kernel.energy_tot(dm=P, h1e=h1e, vhf=vhf)
+    def __call__(self, P: jnp.ndarray) -> jnp.ndarray:
+        h1e = self._kernel.get_hcore()
+        vhf = self._kernel.get_veff(dm=P)
+        e_tot = self._kernel.energy_tot(dm=P, h1e=h1e, vhf=vhf)
         return e_tot
     
     @property
-    def X(self):
-        S = jnp.array(self.mol.intor(f"int1e_ovlp"))
+    def X(self) -> jnp.ndarray:
+        S = jnp.array(self._mol.intor(f"int1e_ovlp"))
         N = 1 / jnp.sqrt(jnp.diagonal(S))
         overlap = N[:, jnp.newaxis] * N[jnp.newaxis, :] * S
 
@@ -41,13 +43,13 @@ class Hamiltonian(eqx.Module):
         return X
 
     @property
-    def occupancy(self):
-        occ = jnp.full(self.mol.nao, 2.0)
-        mask = occ.cumsum() > self.mol.tot_electrons()
+    def occupancy(self) -> jnp.ndarray:
+        occ = jnp.full(self._mol.nao, 2.0)
+        mask = occ.cumsum() > self._mol.tot_electrons()
         occ = jnp.where(mask, 0.0, occ)
         return occ
     
     @property
-    def hcore(self):
-        core = self.kernel.get_hcore(self.mol)
+    def hcore(self) -> jnp.ndarray:
+        core = self._kernel.get_hcore(self._mol)
         return core

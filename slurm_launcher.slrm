@@ -27,4 +27,4 @@ SCRIPTDIR=${HOME_DIR}/dft-opt
 
 # this will run the script
 # export WANDB_API_KEY=3d11f6c087dc5aa70c98c9032ef4431796f05e02
-${HOME_DIR}/miniforge3/envs/dft_opt/bin/python ${SCRIPTDIR}/"$@"
+${HOME_DIR}/miniforge3/envs/dft_opt_jax/bin/python ${SCRIPTDIR}/"$@"
