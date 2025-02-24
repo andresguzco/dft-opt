@@ -32,3 +32,6 @@ def validate(Z, H, nelec):
 
     assert jnp.allclose(jnp.eye(Z.shape[0]), Q.T @ Q, atol=1e-5), "Q is not orthonormal"
     assert jnp.allclose(nelec, jnp.trace(P @ S), atol=1e-5), f"Trace(P @ S) != N"
+
+    Hessian = jax.hessian(lambda X: energy(X, None)[0])(Z)
+    assert jnl.eigh(Hessian)[0].all() >= 0, "Hession != PSD"

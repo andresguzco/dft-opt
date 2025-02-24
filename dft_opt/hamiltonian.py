@@ -22,8 +22,7 @@ class Hamiltonian(eqx.Module):
         return jnp.einsum("k,ik,jk->ij", self.occupancy, C, C)
 
     def orthonormalize(self, Z: jnp.ndarray) -> jnp.ndarray:
-        Q = self._orthos(Z)
-        return Q
+        return self._orthos(Z)
 
     def __call__(self, P: jnp.ndarray) -> jnp.ndarray:
         h1e = self._kernel.get_hcore()
