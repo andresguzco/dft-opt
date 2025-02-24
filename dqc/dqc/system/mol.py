@@ -137,6 +137,7 @@ class Mol(BaseSystem):
             self._spin = spin
             self._charge = charge
             self._numel = nelecs
+            self._frac_mode = frac_mode
             self._orb_weights = _orb_weights
             self._orb_weights_u = _orb_weights_u
             self._orb_weights_d = _orb_weights_d
@@ -357,6 +358,37 @@ class Mol(BaseSystem):
     @property
     def efield(self) -> Optional[Tuple[torch.Tensor, ...]]:
         return self._efield
+    
+    @property
+    def frac_mode(self) -> bool:
+        return self._frac_mode
+    
+    @property
+    def dtype(self) -> torch.dtype:
+        return self._dtype
+    
+    @property
+    def device(self) -> torch.device:
+        return self._device
+    
+    @property
+    def occupancy(self):
+        nspin_dn: torch.Tensor = (self.numel - self.spin) * 0.5 if self.frac_mode else \
+            torch.div(self.numel - self.spin, 2, rounding_mode="floor")
+        nspin_up: torch.Tensor = nspin_dn + self.spin
+
+        _orb_weights_u = occnumber(nspin_up, dtype=self.dtype, device=self.device)
+        _orb_weights_d = occnumber(nspin_dn, n=len(_orb_weights_u), dtype=self._dtype, device=self.device)
+        _orb_weights = _orb_weights_u + _orb_weights_d
+
+        (k, k) = self._hamilton.get_kinnucl().shape
+        out = torch.zeros(k, dtype=self.dtype, device=self.device)
+        out[:len(_orb_weights)] = _orb_weights
+
+        return out
+    
+    def density_matrix(self, C) -> torch.Tensor:
+        return torch.einsum("k,ik,jk->ij", self.occupancy, C, C)
 
 def _parse_basis(atomzs: torch.Tensor, basis: BasisInpType) -> List[List[CGTOBasis]]:
     # returns the list of cgto basis for every atoms

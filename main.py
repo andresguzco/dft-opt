@@ -14,10 +14,11 @@ from pyscf import scf, dft
 ######################################
 # Optimization and Benchmark fn
 ######################################
-def optimize_energy(basis, structure, ortho_fn):
+def optimize_energy(basis, structure, ortho_fn, optimizer):
     start_time = time.time()
     m = dqc.Mol(structure, basis=basis, ao_parameterizer=ortho_fn)
-    qc = dqc.HF(m).run()
+    qc = dqc.HF(system=m, variational=True if optimizer=="Adam" else False).run()
+    # qc = dqc.KS(system=m, xc="GGA_X_PBE", variational=True if optimizer=="Adam" else False).run()
     ene = qc.energy()
     return ene, (time.time() - start_time) * 1000
 ####################################
@@ -62,7 +63,12 @@ def main():
     ####################################
     # Solve with MESS
     ####################################
-    E, DQC_time = optimize_energy(basis=args.basis, structure=structure, ortho_fn=args.ortho_fn)
+    E, DQC_time = optimize_energy(
+        basis=args.basis, 
+        structure=structure, 
+        ortho_fn=args.ortho_fn,
+        optimizer=args.optimizer
+        )
     print(f"DQC Energy: [{E:.2f}], Time: [{DQC_time:.2f} ms]", flush=True)
     ####################################
     

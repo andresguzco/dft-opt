@@ -36,6 +36,11 @@ class BaseOrbParams(object):
         """
         pass
 
+    @staticmethod  
+    def orthonormalize(Z):
+        pass
+    
+
 class QROrbParams(BaseOrbParams):
     @overload
     @staticmethod
@@ -48,6 +53,11 @@ class QROrbParams(BaseOrbParams):
             -> Tuple[torch.Tensor, torch.Tensor]:
         ...
 
+    @staticmethod
+    def orthonormalize(Z):
+        Q, _ = torch.linalg.qr(Z)
+        return Q
+    
     @staticmethod
     def params2orb(params, coeffs, with_penalty):
         orb, _ = torch.linalg.qr(params)
@@ -137,16 +147,28 @@ class CayleyOrbParams(BaseOrbParams):
     def params2orb(params: torch.Tensor, coeffs: torch.Tensor, with_penalty: float) \
             -> Tuple[torch.Tensor, torch.Tensor]:
         ...
+    
+    @staticmethod
+    def orthonormalize(Z):
+        S = torch.tril(Z, -1) - torch.tril(Z, -1).T
+        I = torch.eye(S.shape[0], dtype=S.dtype, device=S.device)
+        Q = torch.linalg.solve(I - S, I + S)
+        return Q
 
     @staticmethod
-    def params2orb(params, coeffs, with_penalty):
+    def params2orb(params, coeffs, with_penalty):      
 
-        def cayley(Z):
-            X = torch.tril(Z, -1) - torch.tril(Z, -1).T
-            Q = torch.linalg.solve(torch.eye(X.shape[0]) + X, torch.eye(X.shape[0]) - X)
-            return Q
-        
-        orb = cayley(params)
+        def CayleyMap(Z):
+            n, k = Z.shape
+
+            X = torch.zeros(n, n, dtype=Z.dtype, device=Z.device)
+            X[:,:k] = Z
+            S = torch.tril(X, -1) - torch.tril(X, -1).T
+            I = torch.eye(S.shape[0], device=S.device)
+            Q = torch.linalg.solve(I - S, I + S)
+            return Q[:, :k]
+
+        orb = CayleyMap(params)
         if with_penalty is None:
             return orb
         else:

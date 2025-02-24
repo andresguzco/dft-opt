@@ -10,6 +10,7 @@ from dqc.qccalc.base_qccalc import BaseQCCalc
 from dqc.utils.datastruct import SpinParam
 from dqc.utils.config import config
 from dqc.utils.misc import set_default_option
+from scipy.optimize import minimize
 
 class SCF_QCCalc(BaseQCCalc):
     """
@@ -46,9 +47,9 @@ class SCF_QCCalc(BaseQCCalc):
         # get default options
         if not self._variational:
             fwd_defopt = {
-                "method": "broyden1",
-                "alpha": -0.5,
-                "maxiter": 50,
+                "method": "L-BFGS-B",
+                "tol": 1e-10,
+                "maxiter": 100,
                 "verbose": config.VERBOSE > 0,
             }
         else:
@@ -103,17 +104,57 @@ class SCF_QCCalc(BaseQCCalc):
             dm = dm.u + dm.d
 
         if not self._variational:
-            scp0 = self._engine.dm2scp(dm)
+            system = self.get_system()
+            h = system.get_hamiltonian()
+            orb_weights = system.get_orbweight(polarized=self._polarized)
+            norb = SpinParam.apply_fcn(lambda orb_weights: len(orb_weights), orb_weights)
 
-            # do the self-consistent iteration
-            scp = xitorch.optimize.equilibrium(
-                fcn=self._engine.scp2scp,
-                y0=scp0,
-                bck_options={**bck_options},
-                **fwd_options)
+            def dm2params(dm: Union[torch.Tensor, SpinParam[torch.Tensor]]) -> \
+                    Tuple[torch.Tensor, torch.Tensor]:
+                pc = SpinParam.apply_fcn(
+                     lambda dm, norb: h.dm2ao_orb_params(SpinParam.sum(dm), norb=norb),
+                     dm, norb)
+                p = SpinParam.apply_fcn(lambda pc: pc[0], pc)
+                c = SpinParam.apply_fcn(lambda pc: pc[1], pc)
+                params = self._engine.pack_aoparams(p)
+                coeffs = self._engine.pack_aoparams(c)
+                return params, coeffs
 
-            # post-process parameters
-            self._dm = self._engine.scp2dm(scp)
+            def params2dm(params: torch.Tensor, coeffs: torch.Tensor) \
+                    -> Union[torch.Tensor, SpinParam[torch.Tensor]]:
+                p: Union[torch.Tensor, SpinParam[torch.Tensor]] = self._engine.unpack_aoparams(params)
+                c: Union[torch.Tensor, SpinParam[torch.Tensor]] = self._engine.unpack_aoparams(coeffs)
+
+                dm = SpinParam.apply_fcn(
+                    lambda p, c, orb_weights: h.ao_orb_params2dm(p, c, orb_weights, with_penalty=None),
+                    p, c, orb_weights)
+                return dm
+            
+            def fn_wrapped(params, coeffs, penalty, shape):
+                params = torch.tensor(params, dtype=self.dtype, device=self.device)
+                params = params.view(shape, len(params) // shape)
+                energy = self._engine.aoparams2ene(params, coeffs, penalty)
+                return energy.item()
+
+            params0, coeffs0 = dm2params(dm)
+            params0 = params0.detach()
+            coeffs0 = coeffs0.detach()
+
+            n = self._engine._hamilton.get_kinnucl().shape[0]
+            res: torch.Tensor = minimize(
+                fun=fn_wrapped,
+                x0=params0.flatten(),
+                args=(coeffs0, None, n),  # coeffs & with_penalty
+                method=fwd_options['method'],
+                tol=fwd_options['tol'],
+                )
+            
+            min_params0 = torch.tensor(res.x, dtype=self.dtype, device=self.device)
+            min_params0 = min_params0.view(n, len(min_params0) // n)
+                
+            out_dm = params2dm(min_params0, coeffs0)
+            print(f"Out dm: {out_dm.shape}")
+            self._dm = out_dm
         else:
             system = self.get_system()
             h = system.get_hamiltonian()
@@ -170,8 +211,10 @@ class SCF_QCCalc(BaseQCCalc):
                     method="gd",
                     step=0,
                     maxiter=0)
-
-            self._dm = params2dm(min_params0, coeffs0)
+                
+            out_dm = params2dm(min_params0, coeffs0)
+            print(f"Out dm: {out_dm.shape}")
+            self._dm = out_dm
 
         self._has_run = True
         return self

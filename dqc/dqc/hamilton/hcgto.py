@@ -52,7 +52,7 @@ class HamiltonCGTO(BaseHamilton):
             warnings.warn("Parametrization with matrix exponential is still at the experimental stage.")
             self._orbparam = MatExpOrbParams
         elif aoparamzer == "cayley":
-            warnings.warn("Parametrization with Cayley transform is still at the experimental stage.")
+            # warnings.warn("Parametrization with Cayley transform is still at the experimental stage.")
             self._orbparam = CayleyOrbParams
         else:
             aoparam_opts = ["qr", "matexp", "cayley"]
@@ -211,7 +211,7 @@ class HamiltonCGTO(BaseHamilton):
         if self._df is None:
             mat = torch.einsum("...ij,ijkl->...kl", dm, self.el_mat)
             mat = (mat + mat.transpose(-2, -1)) * 0.5  # reduce numerical instability
-            return xt.LinearOperator.m(mat, is_hermitian=True)
+            return xt.LinearOperator.m(mat, is_hermitian=False)
         else:
             elrep = self._df.get_elrep(dm)
             return elrep
@@ -237,7 +237,7 @@ class HamiltonCGTO(BaseHamilton):
             mat = -0.5 * torch.einsum("...il,ijkl->...ijk", dm, self.el_mat).sum(dim=-3)  # faster
 
             mat = (mat + mat.transpose(-2, -1)) * 0.5  # reduce numerical instability
-            return xt.LinearOperator.m(mat, is_hermitian=True)
+            return xt.LinearOperator.m(mat, is_hermitian=False)
         else:  # dm is SpinParam
             # using the spin-scaling property of exchange energy
             return SpinParam(u=self.get_exchange(2 * dm.u),
@@ -280,6 +280,7 @@ class HamiltonCGTO(BaseHamilton):
         # orb_weight: (*BW, norb)
         # return: (*BOW, nao, nao)
 
+        # print(f"Orbitals: {orb.shape}", flush=True)
         orb_w = orb * orb_weight.unsqueeze(-2)  # (*BOW, nao, norb)
         return torch.matmul(orb, orb_w.transpose(-2, -1))  # (*BOW, nao, nao)
 
