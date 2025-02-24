@@ -1,9 +1,16 @@
 #!/bin/bash
 
-sbatch slurm_launcher.slrm main.py \
-  --molecule "C6H6" \
-  --method "lda" \
-  --basis "def2-SVP" \
-  --optimizer "Adam" \
-  --num_iter 200 \
-  --lr 0.01
+# sbatch slurm_launcher.slrm main.py --molecule "water"  --optimizer "BFGS" --ortho "qr"
+# sbatch slurm_launcher.slrm main.py --molecule "water"  --optimizer "BFGS" --ortho "cayley"
+# sbatch slurm_launcher.slrm main.py --molecule "water"  --optimizer "Adam" --ortho "qr"
+# sbatch slurm_launcher.slrm main.py --molecule "water"  --optimizer "Adam" --ortho "cayley"
+
+sbatch slurm_launcher.slrm main.py --molecule "benzene"  --optimizer "BFGS" --ortho "qr"
+sbatch slurm_launcher.slrm main.py --molecule "benzene"  --optimizer "BFGS" --ortho "cayley"
+# sbatch slurm_launcher.slrm main.py --molecule "benzene"  --optimizer "Adam" --ortho "qr"
+# sbatch slurm_launcher.slrm main.py --molecule "benzene"  --optimizer "Adam" --ortho "cayley"
+
+sbatch slurm_launcher.slrm main.py --molecule "graphene"  --optimizer "BFGS" --ortho "qr"
+sbatch slurm_launcher.slrm main.py --molecule "graphene"  --optimizer "BFGS" --ortho "cayley"
+sbatch slurm_launcher.slrm main.py --molecule "graphene"  --optimizer "Adam" --ortho "qr"
+# sbatch slurm_launcher.slrm main.py --molecule "graphene"  --optimizer "Adam" --ortho "cayley"

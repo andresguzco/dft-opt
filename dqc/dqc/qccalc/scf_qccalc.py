@@ -153,7 +153,6 @@ class SCF_QCCalc(BaseQCCalc):
             min_params0 = min_params0.view(n, len(min_params0) // n)
                 
             out_dm = params2dm(min_params0, coeffs0)
-            print(f"Out dm: {out_dm.shape}")
             self._dm = out_dm
         else:
             system = self.get_system()
@@ -213,7 +212,6 @@ class SCF_QCCalc(BaseQCCalc):
                     maxiter=0)
                 
             out_dm = params2dm(min_params0, coeffs0)
-            print(f"Out dm: {out_dm.shape}")
             self._dm = out_dm
 
         self._has_run = True

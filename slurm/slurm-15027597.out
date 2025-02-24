@@ -1,0 +1,5 @@
+Mon Feb 24 15:14:26 EST 2025: Job 15027597 is allocated resources.
+Inside slurm_launcher.slrm (/var/spool/slurmd/job15027597/slurm_script). received arguments: main.py --molecule graphene --optimizer Adam --ortho qr
+Parameters: [graphene / def2-SVP / Adam / qr]
+PySCF Energy: [-301.94], Time: [2406.37 ms]
+DQC Energy: [-290.09], Time: [604416.34 ms]

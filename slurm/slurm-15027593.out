@@ -1,0 +1,5 @@
+Mon Feb 24 15:14:26 EST 2025: Job 15027593 is allocated resources.
+Inside slurm_launcher.slrm (/var/spool/slurmd/job15027593/slurm_script). received arguments: main.py --molecule benzene --optimizer BFGS --ortho qr
+Parameters: [benzene / def2-SVP / BFGS / qr]
+PySCF Energy: [-230.53], Time: [5727.33 ms]
+DQC Energy: [-211.54], Time: [1376332.34 ms]

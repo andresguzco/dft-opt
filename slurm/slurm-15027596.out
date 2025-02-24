@@ -1,0 +1,5 @@
+Mon Feb 24 15:14:26 EST 2025: Job 15027596 is allocated resources.
+Inside slurm_launcher.slrm (/var/spool/slurmd/job15027596/slurm_script). received arguments: main.py --molecule graphene --optimizer BFGS --ortho cayley
+Parameters: [graphene / def2-SVP / BFGS / cayley]
+PySCF Energy: [-301.94], Time: [2584.08 ms]
+DQC Energy: [-281.99], Time: [971457.05 ms]
