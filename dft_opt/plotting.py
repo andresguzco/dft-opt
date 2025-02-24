@@ -9,5 +9,5 @@ def plot_energy(history, args):
     ax.set_xlabel("Iteration")
     ax.set_ylabel("Total energy (Hartree)")
     plt.title("Energy Optimization of " + args.molecule)
-    plt.savefig(f'plots/energy_{args.molecule}_{args.basis}_{args.optimizer}.png')
+    plt.savefig(f'plots/energy_{args.molecule}_{args.basis}_{args.optimizer}_{args.ortho}.png')
     plt.close()
