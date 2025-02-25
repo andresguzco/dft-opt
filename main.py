@@ -56,25 +56,26 @@ def main():
     print(f"PySCF Energy: [{pyscf_energy:.2f}], Time: [{pyscf_time:.2f} ms]", flush=True)
     ####################################
     
+
     ####################################
     # Solve with JAX
     ####################################
-    H = Hamiltonian(mol=mol, kernel=mf, orthos=args.ortho)
-    Z, E, elapsed_time = solve(H, args.num_iter, args.lr, args.optimizer)
+    H = Hamiltonian(mol=mol, kernel=mf)
+    Z, E, elapsed_time = solve(H, args.num_iter, args.lr, args.optimizer, args.ortho)
     print(f"JAX Energy: [{E:.2f}], Time: [{elapsed_time:.2f} ms]", flush=True)
     ####################################
     
     ####################################
     # Check if the optimized Z is valid
     ####################################
-    validate(Z, H, sum(mol.nelec))
+    validate(Z, H, sum(mol.nelec), args.ortho)
     print("All tests passed!", flush=True)
     ####################################
 
     ###################################
     # Record history for plotting
     ###################################
-    history = solve_with_history(H, args.num_iter, args.lr, args.optimizer)
+    history = solve_with_history(H, args.num_iter, args.lr, args.optimizer, args.ortho)
     plot_energy(history, args)
     ####################################
 

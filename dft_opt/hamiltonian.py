@@ -1,33 +1,27 @@
+import jax
 import equinox as eqx
 import jax.numpy as jnp
 import jax.numpy.linalg as jnl
-from .orthonormalize import cayley, qr
-from pyscfad.gto import Mole
-# from pyscfad.dft import RKS
 from pyscfad.scf import RHF
-from typing import Union
-    
+from pyscfad.gto import Mole
+
 
 class Hamiltonian(eqx.Module):
     _mol: Mole
     _kernel: RHF
-    _orthos: Union[cayley, qr]
 
-    def __init__(self, mol: Mole, kernel: RHF, orthos: str):
+    def __init__(self, mol: Mole, kernel: RHF):
         self._mol = mol
         self._kernel = kernel
-        self._orthos = cayley if orthos == "cayley" else qr
     
+    @jax.jit
     def density_matrix(self, C: jnp.ndarray) ->jnp.ndarray:
         return jnp.einsum("k,ik,jk->ij", self.occupancy, C, C)
 
-    def orthonormalize(self, Z: jnp.ndarray) -> jnp.ndarray:
-        return self._orthos(Z)
-
+    @jax.jit
     def __call__(self, P: jnp.ndarray) -> jnp.ndarray:
-        h1e = self._kernel.get_hcore()
         vhf = self._kernel.get_veff(dm=P)
-        e_tot = self._kernel.energy_tot(dm=P, h1e=h1e, vhf=vhf)
+        e_tot = self._kernel.energy_tot(dm=P, h1e=self.hcore, vhf=vhf)
         return e_tot
     
     @property

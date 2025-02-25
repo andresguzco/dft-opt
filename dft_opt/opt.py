@@ -4,6 +4,7 @@ import optax
 import equinox as eqx
 import jax.numpy as jnp
 import optimistix as optx
+from .orthonormalize import cayley, qr
 
 
 def get_solver(optimizer, atol=1e-4, rtol=1e-4, lr=0.001):
@@ -18,44 +19,62 @@ def get_solver(optimizer, atol=1e-4, rtol=1e-4, lr=0.001):
         raise ValueError("Invalid optimizer")
 
 
-def solve(H, iter, lr, optimizer):
+def solve(H, iter, lr, optimizer, ortho_fn):
     n, _ = H.X.shape
     Z_init = jnp.eye(n, device=H.X.device)
+    solver = get_solver(optimizer=optimizer, lr=lr)
+
+    if ortho_fn == "cayley":
+        @jax.jit
+        def energy(Z, X):
+            C = X @ cayley(Z)
+            P = H.density_matrix(C)
+            out = H(P)
+            return out
+
+    else: 
+        @jax.jit
+        def energy(Z, X):
+            C = X @ qr(Z)
+            P = H.density_matrix(C)
+            out = H(P)
+            return out
     
-    @jax.jit
-    def energy(Z, _):
-        C = H.X @ H.orthonormalize(Z)
-        P = H.density_matrix(C)
-        out = H(P)
-        return out
-
-    solver = get_solver(optimizer=optimizer, lr=lr)
-
     start_time = time.time()
-    sol = optx.minimise(energy, solver, Z_init, max_steps=iter)
+    sol = optx.minimise(energy, solver, Z_init, args=H.X, max_steps=iter)
     elapsed_time = (time.time() - start_time) * 1000
+    out = energy(sol.value, H.X)
 
-    return sol.value, energy(sol.value, None), elapsed_time 
+    return sol.value, out, elapsed_time 
 
 
-def solve_with_history(H, iter, lr, optimizer):
+def solve_with_history(H, iter, lr, optimizer, ortho_fn):
     y = jnp.eye(H.X.shape[0])
-
-    @jax.jit
-    def energy(Z, _):
-        C = H.X @ H.orthonormalize(Z)
-        P = H.density_matrix(C)
-        e = H(P)
-        aux = None
-        return e, aux
-
     solver = get_solver(optimizer=optimizer, lr=lr)
 
-    args = None
+    args = H.X
     f_struct = jax.ShapeDtypeStruct((), jnp.float64)
     options = dict()
     aux_struct = None
     tags = frozenset()
+
+    if ortho_fn == "cayley":
+        @jax.jit
+        def energy(Z, X):
+            C = X @ cayley(Z)
+            P = H.density_matrix(C)
+            e = H(P)
+            aux = None
+            return e, aux
+        
+    else:   
+        @jax.jit
+        def energy(Z, X):
+            C = X @ qr(Z)
+            P = H.density_matrix(C)
+            e = H(P)
+            aux = None
+            return e, aux
 
     step = eqx.filter_jit(
         eqx.Partial(solver.step, fn=energy, args=args, options=options, tags=tags)
@@ -68,9 +87,8 @@ def solve_with_history(H, iter, lr, optimizer):
     done, result = terminate(y=y, state=state)
     
     history = [energy(y, args)[0].item()]
-    start_time = time.time()
     while not done and len(history) < iter:
-        y, state, aux = step(y=y, state=state)
+        y, state, _ = step(y=y, state=state)
         done, result = terminate(y=y, state=state)
         history.append(energy(y, args)[0].item())
 
