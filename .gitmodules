@@ -1,0 +1,6 @@
+[submodule "67ae19c03ad71b1246e1ae2e"]
+	path = 67ae19c03ad71b1246e1ae2e
+	url = https://git@git.overleaf.com/67ae19c03ad71b1246e1ae2e
+[submodule "paper"]
+	path = paper
+	url = https://git@git.overleaf.com/67ae19c03ad71b1246e1ae2e
