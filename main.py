@@ -4,15 +4,13 @@
 import jax
 import time
 import argparse
-
+import warnings
 from pyscfad import scf
 from dft_opt import (
     get_molecule, 
     solve, 
-    solve_with_history, 
     plot_energy, 
     validate, 
-    Hamiltonian,
 )
 ####################################
 
@@ -60,25 +58,17 @@ def main():
     ####################################
     # Solve with JAX
     ####################################
-    H = Hamiltonian(mol=mol, kernel=mf)
-    Z, E, elapsed_time = solve(H, args.num_iter, args.lr, args.optimizer, args.ortho)
+    Z, E, elapsed_time, history = solve(mol, mf, args.num_iter, args.lr, args.optimizer, args.ortho)
     print(f"JAX Energy: [{E:.2f}], Time: [{elapsed_time:.2f} ms]", flush=True)
+    plot_energy(history, args)
     ####################################
     
     ####################################
     # Check if the optimized Z is valid
     ####################################
-    validate(Z, H, sum(mol.nelec), args.ortho)
+    validate(Z, mol, mf, sum(mol.nelec), args.ortho)
     print("All tests passed!", flush=True)
     ####################################
-
-    ###################################
-    # Record history for plotting
-    ###################################
-    history = solve_with_history(H, args.num_iter, args.lr, args.optimizer, args.ortho)
-    plot_energy(history, args)
-    ####################################
-
 
 if __name__ == "__main__":
     main()
