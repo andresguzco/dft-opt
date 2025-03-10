@@ -40,12 +40,14 @@ class HamiltonCGTO(BaseHamilton):
 
         # set up the orbital converter
         ovlp = intor.overlap(self.libcint_wrapper)
+        self._ovlp = ovlp.double()
         if orthozer:
             self._orthozer = OrbitalOrthogonalizer(ovlp)
         else:
             self._orthozer = IdentityOrbConverter(ovlp)
 
         # set up the orbital parameterized
+        self._aoparamzer = aoparamzer
         if aoparamzer == "qr":
             self._orbparam: Type[BaseOrbParams] = QROrbParams
         elif aoparamzer == "matexp":
@@ -114,25 +116,25 @@ class HamiltonCGTO(BaseHamilton):
             logger.log("Calculating the nuclear attraction matrix")
             nucl_mat = self._cache.cache("nuclattr", lambda: intor.nuclattr(self.libcint_wrapper))
             self.nucl_mat = nucl_mat
-            self.kinnucl_mat = kin_mat + nucl_mat
+            self.kinnucl_mat = nucl_mat + kin_mat
 
-            # electric field integral
-            if self._efield is not None:
-                # (ndim, nao, nao)
-                fac: float = 1.0
-                for i in range(len(self._efield)):
-                    fac *= i + 1
-                    intor_fcn = lambda: intor.int1e("r0" * (i + 1), self.libcint_wrapper)
-                    efield_mat_f = self._cache.cache(f"efield{i}", intor_fcn)
-                    efield_mat = torch.einsum("dab,d->ab", efield_mat_f, self._efield[i])
-                    self.kinnucl_mat = self.kinnucl_mat + efield_mat / fac
+            # # electric field integral
+            # if self._efield is not None:
+            #     # (ndim, nao, nao)
+            #     fac: float = 1.0
+            #     for i in range(len(self._efield)):
+            #         fac *= i + 1
+            #         intor_fcn = lambda: intor.int1e("r0" * (i + 1), self.libcint_wrapper)
+            #         efield_mat_f = self._cache.cache(f"efield{i}", intor_fcn)
+            #         efield_mat = torch.einsum("dab,d->ab", efield_mat_f, self._efield[i])
+            #         self.kinnucl_mat = self.kinnucl_mat + efield_mat / fac
 
             if self._df is None:
                 logger.log("Calculating the electron repulsion matrix")
                 self.el_mat = self._cache.cache("elrep", lambda: intor.elrep(self.libcint_wrapper))  # (nao^4)
                 # TODO: decide whether to precompute the 2-eris in the new basis
                 # based on the memory
-                self.el_mat = self._orthozer.convert4(self.el_mat)
+                # self.el_mat = self._orthozer.convert4(self.el_mat)
             else:
                 logger.log("Building the density fitting matrices")
                 self._df.build()
@@ -140,7 +142,7 @@ class HamiltonCGTO(BaseHamilton):
 
             # orthogonalize the matrices
             self.olp_mat = self._orthozer.convert2(self.olp_mat)  # (nao2, nao2)
-            self.kinnucl_mat = self._orthozer.convert2(self.kinnucl_mat)
+            # self.kinnucl_mat = self._orthozer.convert2(self.kinnucl_mat)
             self.nucl_mat = self._orthozer.convert2(self.nucl_mat)
 
             # external potential
@@ -279,10 +281,9 @@ class HamiltonCGTO(BaseHamilton):
         # orb: (*BO, nao, norb)
         # orb_weight: (*BW, norb)
         # return: (*BOW, nao, nao)
-
-        # print(f"Orbitals: {orb.shape}", flush=True)
         orb_w = orb * orb_weight.unsqueeze(-2)  # (*BOW, nao, norb)
-        return torch.matmul(orb, orb_w.transpose(-2, -1))  # (*BOW, nao, nao)
+        out = torch.matmul(orb, orb_w.transpose(-2, -1)) # (*BOW, nao, nao)
+        return out 
 
     def aodm2dens(self, dm: torch.Tensor, xyz: torch.Tensor) -> torch.Tensor:
         # xyz: (*BR, ndim)
@@ -314,12 +315,8 @@ class HamiltonCGTO(BaseHamilton):
 
     def get_e_exchange(self, dm: Union[torch.Tensor, SpinParam[torch.Tensor]]) -> torch.Tensor:
         # get the energy from two electron exchange operator
-        exc_mat = self.get_exchange(dm)
-        ene = SpinParam.apply_fcn(
-            lambda exc_mat, dm: 0.5 * torch.einsum("...ij,...ji->...", exc_mat.fullmatrix(), dm),
-            exc_mat, dm)
-        enetot = SpinParam.sum(ene)
-        return enetot
+        exc_mat = self.get_exchange(dm).fullmatrix()
+        return 0.5 * torch.einsum("...ij,...ji->...", exc_mat, dm)
 
     def get_e_xc(self, dm: Union[torch.Tensor, SpinParam[torch.Tensor]]) -> torch.Tensor:
         assert self.xc is not None, "Please call .setup_grid with the xc object"
@@ -349,6 +346,8 @@ class HamiltonCGTO(BaseHamilton):
         # the atomic orbital parameter is the inverse QR of the orbital
         # ao_orb_params: (*BD, nao, norb)
         out = self._orbparam.params2orb(ao_orb_params, ao_orb_coeffs, with_penalty=with_penalty)
+
+
         if with_penalty is None:
             ao_orbq = out
         else:

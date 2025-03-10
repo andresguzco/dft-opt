@@ -1,16 +1,26 @@
 #!/bin/bash
+SEEDS=(0 42 123 2279 7931)
 
-# sbatch slurm_launcher.slrm main.py --molecule "water"  --optimizer "BFGS" --ortho "qr"
-# sbatch slurm_launcher.slrm main.py --molecule "water"  --optimizer "BFGS" --ortho "cayley"
-# sbatch slurm_launcher.slrm main.py --molecule "water"  --optimizer "Adam" --ortho "qr"
-# sbatch slurm_launcher.slrm main.py --molecule "water"  --optimizer "Adam" --ortho "cayley"
+# Water
+for seed in ${SEEDS[@]}; do
+    sbatch slurm_launcher.slrm main.py --molecule "H2O"  --optimizer "lbfgs" --ortho "qr" --seed $seed
+    sbatch slurm_launcher.slrm main.py --molecule "H2O"  --optimizer "lbfgs" --ortho "cayley" --seed $seed
+    sbatch slurm_launcher.slrm main.py --molecule "H2O"  --optimizer "adam" --ortho "qr" --seed $seed
+    sbatch slurm_launcher.slrm main.py --molecule "H2O"  --optimizer "adam" --ortho "cayley" --seed $seed
+done
 
-sbatch slurm_launcher.slrm main.py --molecule "benzene"  --optimizer "BFGS" --ortho "qr"
-sbatch slurm_launcher.slrm main.py --molecule "benzene"  --optimizer "BFGS" --ortho "cayley"
-# sbatch slurm_launcher.slrm main.py --molecule "benzene"  --optimizer "Adam" --ortho "qr"
-# sbatch slurm_launcher.slrm main.py --molecule "benzene"  --optimizer "Adam" --ortho "cayley"
+# Benzene
+for seed in ${SEEDS[@]}; do
+    sbatch slurm_launcher.slrm main.py --molecule "C6H6"  --optimizer "lbfgs" --ortho "qr" --seed $seed
+    sbatch slurm_launcher.slrm main.py --molecule "C6H6"  --optimizer "lbfgs" --ortho "cayley" --seed $seed
+    sbatch slurm_launcher.slrm main.py --molecule "C6H6"  --optimizer "adam" --ortho "qr" --seed $seed
+    sbatch slurm_launcher.slrm main.py --molecule "C6H6"  --optimizer "adam" --ortho "cayley" --seed $seed
+done
 
-sbatch slurm_launcher.slrm main.py --molecule "graphene"  --optimizer "BFGS" --ortho "qr"
-sbatch slurm_launcher.slrm main.py --molecule "graphene"  --optimizer "BFGS" --ortho "cayley"
-sbatch slurm_launcher.slrm main.py --molecule "graphene"  --optimizer "Adam" --ortho "qr"
-# sbatch slurm_launcher.slrm main.py --molecule "graphene"  --optimizer "Adam" --ortho "cayley"
+# Graphene
+for seed in ${SEEDS[@]}; do
+    sbatch slurm_launcher.slrm main.py --molecule "graphene"  --optimizer "lbfgs" --ortho "qr" --seed $seed
+    sbatch slurm_launcher.slrm main.py --molecule "graphene"  --optimizer "lbfgs" --ortho "cayley" --seed $seed
+    sbatch slurm_launcher.slrm main.py --molecule "graphene"  --optimizer "adam" --ortho "qr" --seed $seed
+    sbatch slurm_launcher.slrm main.py --molecule "graphene"  --optimizer "adam" --ortho "cayley" --seed $seed
+done

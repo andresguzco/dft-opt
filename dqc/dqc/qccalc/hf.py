@@ -29,11 +29,10 @@ class HF(SCF_QCCalc):
     """
 
     def __init__(self, system: BaseSystem,
-                 restricted: Optional[bool] = None,
-                 variational: bool = False):
+                 restricted: Optional[bool] = None):
 
         engine = _HFEngine(system, restricted)
-        super().__init__(engine, variational)
+        super().__init__(engine)
 
 class _HFEngine(BaseSCFEngine):
     """
@@ -165,11 +164,15 @@ class _HFEngine(BaseSCFEngine):
 
     def dm2energy(self, dm: Union[torch.Tensor, SpinParam[torch.Tensor]]) -> torch.Tensor:
         # calculate the energy given the density matrix
-        dmtot = SpinParam.sum(dm)
-        e_core = self._hamilton.get_e_hcore(dmtot)
-        e_elrep = self._hamilton.get_e_elrep(dmtot)
-        e_exch = self._hamilton.get_e_exchange(dm)
-        return e_core + e_elrep + e_exch + self._system.get_nuclei_energy()
+        e_core = self._hamilton.get_e_hcore(dm)
+        e_nuc = self._system.get_nuclei_energy()
+
+        elrep_mat = self._hamilton.get_elrep(dm).fullmatrix()
+        exch_mat = self._hamilton.get_exchange(dm).fullmatrix()
+        vhf = elrep_mat + exch_mat
+        e_coul = 0.5 * torch.einsum("...ij,...ji->...", vhf, dm)
+
+        return e_core + e_coul + e_nuc
 
     @overload
     def __dm2fock(self, dm: torch.Tensor) -> xt.LinearOperator:
@@ -195,7 +198,7 @@ class _HFEngine(BaseSCFEngine):
     def __dm2vhf(self, dm):
         # from density matrix, returns the linear operator on electron-electron
         # coulomb and exchange
-        elrep = self._hamilton.get_elrep(SpinParam.sum(dm))
+        elrep = self._hamilton.get_elrep(dm)
         exch = self._hamilton.get_exchange(dm)
         vhf = SpinParam.apply_fcn(lambda exch: elrep + exch, exch)
         return vhf

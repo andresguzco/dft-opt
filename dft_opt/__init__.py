@@ -1,4 +1,3 @@
-# from .orthonormalize import *
 from .molecules import *
-# from .plotting import *
-# from .opt import *
+from .manifold import *
+from .utils import *

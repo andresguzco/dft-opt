@@ -34,12 +34,12 @@ class KS(SCF_QCCalc):
         Otherwise, solve it using self-consistent iteration.
     """
 
-    def __init__(self, system: BaseSystem, xc: Union[str, BaseXC, None],
-                 restricted: Optional[bool] = None,
-                 variational: bool = False):
+    def __init__(self, 
+                 system: BaseSystem, 
+                 xc: Union[str, BaseXC, None]):
 
         engine = _KSEngine(system, xc)
-        super().__init__(engine, variational)
+        super().__init__(engine)
 
 class _KSEngine(BaseSCFEngine):
     """
@@ -54,7 +54,7 @@ class _KSEngine(BaseSCFEngine):
     """
     def __init__(self, system: BaseSystem, xc: Union[str, BaseXC, None],
                  restricted: Optional[bool] = None):
-
+        super().__init__()
         # get the xc object
         if isinstance(xc, str):
             self.xc: Optional[BaseXC] = get_xc(xc)
@@ -67,10 +67,10 @@ class _KSEngine(BaseSCFEngine):
         self._system = system
 
         # build and setup basis and grid
-        self.hamilton = system.get_hamiltonian()
+        self._hamilton = system.get_hamiltonian()
         if self.xc is not None or system.requires_grid():
             system.setup_grid()
-            self.hamilton.setup_grid(system.get_grid(), self.xc)
+            self._hamilton.setup_grid(system.get_grid(), self.xc)
 
         # get the HF engine and build the hamiltonian
         # no need to rebuild the grid because it has been constructed
@@ -83,7 +83,7 @@ class _KSEngine(BaseSCFEngine):
                                         self.orb_weight)
 
         # set up the vext linear operator
-        self.knvext_linop = self.hamilton.get_kinnucl()  # kinetic, nuclear, and external potential
+        self.knvext_linop = self._hamilton.get_kinnucl()  # kinetic, nuclear, and external potential
 
     def get_system(self) -> BaseSystem:
         return self._system
@@ -157,13 +157,15 @@ class _KSEngine(BaseSCFEngine):
     def dm2energy(self, dm: Union[torch.Tensor, SpinParam[torch.Tensor]]) -> torch.Tensor:
         # calculate the energy given the density matrix
         dmtot = SpinParam.sum(dm)
-        e_core = self.hamilton.get_e_hcore(dmtot)
-        e_elrep = self.hamilton.get_e_elrep(dmtot)
+        e_core = self._hamilton.get_e_hcore(dmtot)
+        e_elrep = self._hamilton.get_e_elrep(dmtot)
         if self.xc is not None:
-            e_xc: Union[torch.Tensor, float] = self.hamilton.get_e_xc(dm)
+            e_xc: Union[torch.Tensor, float] = self._hamilton.get_e_xc(dm)
         else:
             e_xc = 0.0
-        return e_core + e_elrep + e_xc + self._system.get_nuclei_energy()
+
+        e_nuc = self._system.get_nuclei_energy()
+        return e_core + e_elrep + e_xc + e_nuc
 
     @overload
     def __dm2fock(self, dm: torch.Tensor) -> xt.LinearOperator:
@@ -174,11 +176,11 @@ class _KSEngine(BaseSCFEngine):
         ...
 
     def __dm2fock(self, dm):
-        elrep = self.hamilton.get_elrep(SpinParam.sum(dm))  # (..., nao, nao)
+        elrep = self._hamilton.get_elrep(SpinParam.sum(dm))  # (..., nao, nao)
         core_coul = self.knvext_linop + elrep
 
         if self.xc is not None:
-            vxc = self.hamilton.get_vxc(dm)  # spin param or tensor (..., nao, nao)
+            vxc = self._hamilton.get_vxc(dm)  # spin param or tensor (..., nao, nao)
             return SpinParam.apply_fcn(lambda vxc_: vxc_ + core_coul, vxc)
         else:
             if isinstance(dm, SpinParam):
@@ -204,23 +206,23 @@ class _KSEngine(BaseSCFEngine):
             sprefix = prefix + "_system."
 
             if self.xc is not None:
-                e_xc_params = self.hamilton.getparamnames("get_e_xc", prefix=hprefix)
+                e_xc_params = self._hamilton.getparamnames("get_e_xc", prefix=hprefix)
             else:
                 e_xc_params = []
 
-            return self.hamilton.getparamnames("get_e_hcore", prefix=hprefix) + \
-                self.hamilton.getparamnames("get_e_elrep", prefix=hprefix) + \
+            return self._hamilton.getparamnames("get_e_hcore", prefix=hprefix) + \
+                self._hamilton.getparamnames("get_e_elrep", prefix=hprefix) + \
                 e_xc_params + \
                 self._system.getparamnames("get_nuclei_energy", prefix=sprefix)
         elif methodname == "__dm2fock":
             hprefix = prefix + "hamilton."
 
             if self.xc is not None:
-                vxc_params = self.hamilton.getparamnames("get_vxc", prefix=hprefix)
+                vxc_params = self._hamilton.getparamnames("get_vxc", prefix=hprefix)
             else:
                 vxc_params = []
 
-            return self.hamilton.getparamnames("get_elrep", prefix=hprefix) + \
+            return self._hamilton.getparamnames("get_elrep", prefix=hprefix) + \
                 vxc_params + \
                 self.knvext_linop._getparamnames(prefix=prefix + "knvext_linop.")
         else:

@@ -1,16 +1,46 @@
 from __future__ import annotations
 from abc import abstractmethod, abstractproperty
-from typing import Optional, Dict, Any, List, Union, Tuple
-import torch
-import xitorch as xt
-import xitorch.linalg
-import xitorch.optimize
 from dqc.system.base_system import BaseSystem
 from dqc.qccalc.base_qccalc import BaseQCCalc
 from dqc.utils.datastruct import SpinParam
-from dqc.utils.config import config
-from dqc.utils.misc import set_default_option
-from scipy.optimize import minimize
+from dft_opt import CayleyStiefel
+from typing import Optional, Dict, Any, List, Union, Tuple
+import geoopt
+import torch
+
+
+def qr(Z):
+    Q, _ = torch.linalg.qr(Z)
+    return Q
+
+
+def cayley(Z):
+    X = torch.tril(Z, -1) - torch.tril(Z, -1).T
+    I = torch.eye(X.shape[0])
+    Q = torch.linalg.solve(I + X, I - X)
+    return Q
+
+
+def get_X(S):
+    S = S.double()
+    N = 1 / torch.sqrt(torch.diag(S))
+    overlap = N.unsqueeze(1) * N.unsqueeze(0) * S
+    s, U = torch.linalg.eigh(overlap)
+    s = torch.diag(torch.pow(s, -0.5))
+    X = U @ s @ U.T
+    return X
+
+
+def occupancy(occupancy, n):
+    occ = torch.zeros(n)
+    k = occupancy.size(0)
+    occ[:k] = occupancy
+    return occ
+
+
+def density_matrix(C, occupancy):
+    return torch.einsum("k,ik,jk->ij", occupancy, C, C)
+
 
 class SCF_QCCalc(BaseQCCalc):
     """
@@ -27,195 +57,83 @@ class SCF_QCCalc(BaseQCCalc):
         Otherwise, use self-consistent iterations.
     """
 
-    def __init__(self, engine: BaseSCFEngine, variational: bool = False):
+    def __init__(self, engine: BaseSCFEngine):
         self._engine = engine
         self._polarized = engine.polarized
         self._shape = self._engine.shape
         self.dtype = self._engine.dtype
         self.device = self._engine.device
         self._has_run = False
-        self._variational = variational
 
     def get_system(self) -> BaseSystem:
         return self._engine.get_system()
 
-    def run(self, dm0: Optional[Union[str, torch.Tensor, SpinParam[torch.Tensor]]] = "1e",  # type: ignore
-            eigen_options: Optional[Dict[str, Any]] = None,
-            fwd_options: Optional[Dict[str, Any]] = None,
-            bck_options: Optional[Dict[str, Any]] = None) -> BaseQCCalc:
+    def run(self, opt_type, iter) -> BaseQCCalc:
+        fwd_options = {"method": opt_type, "maxiter": iter}
 
-        # get default options
-        if not self._variational:
-            fwd_defopt = {
-                "method": "L-BFGS-B",
-                "tol": 1e-10,
-                "maxiter": 100,
-                "verbose": config.VERBOSE > 0,
-            }
+        if self._engine._hamilton._aoparamzer == "qr":
+            ortho_fn = qr
+        elif self._engine._hamilton._aoparamzer == "cayley":
+            ortho_fn = cayley
         else:
-            fwd_defopt = {
-                "method": "gd",
-                "step": 1e-2,
-                "maxiter": 5000,
-                "f_rtol": 1e-10,
-                "x_rtol": 1e-10,
-                "verbose": config.VERBOSE > 0,
-            }
-        bck_defopt = {
-            # NOTE: it seems like in most cases the jacobian matrix is posdef
-            # if it is not the case, we can just remove the line below
-            "posdef": True,
-        }
+            raise ValueError("Unknown orthogonalization function: %s" % self._engine._aoparamzer)
 
-        # setup the default options
-        if eigen_options is None:
-            eigen_options = {
-                "method": "exacteig"
-            }
-        if fwd_options is None:
-            fwd_options = {}
-        if bck_options is None:
-            bck_options = {}
-        fwd_options = set_default_option(fwd_defopt, fwd_options)
-        bck_options = set_default_option(bck_defopt, bck_options)
+        n = self._engine._hamilton.get_kinnucl().shape[0]
+        orb_weights = self._engine._system.get_orbweight(polarized=self._polarized)
+        occ = occupancy(orb_weights, n)
+        X = get_X(self._engine._hamilton._ovlp)
 
-        # save the eigen_options for use in diagonalization
-        self._engine.set_eigen_options(eigen_options)
+        if fwd_options["method"] == "adam":
+            Z = torch.nn.Parameter(torch.eye(n, dtype=torch.double))
+            optimizer = torch.optim.Adam([Z])
+        elif fwd_options["method"] == "lbfgs":
+            Z = torch.nn.Parameter(torch.eye(n, dtype=torch.double))
+            optimizer = torch.optim.LBFGS([Z], max_iter = 1, line_search_fn="strong_wolfe")
+        elif fwd_options["method"] == "radam":
 
-        # set up the initial self-consistent param guess
-        if dm0 is None:
-            dm = self._get_zero_dm()
-        elif isinstance(dm0, str):
-            if dm0 == "1e":  # initial density based on 1-electron Hamiltonian
-                dm = self._get_zero_dm()
-                scp0 = self._engine.dm2scp(dm)
-                dm = self._engine.scp2dm(scp0)
-            else:
-                raise RuntimeError("Unknown dm0: %s" % dm0)
+            assert self._engine._hamilton._aoparamzer == "cayley", "Riemannian Adam only works with Cayley"
+
+            S = X @ X.T
+            I = torch.eye(n, dtype=torch.double)
+
+            man = CayleyStiefel() 
+            man.set_S(S)
+
+            Z = geoopt.ManifoldParameter(I, manifold=man)
+            optimizer = geoopt.optim.RiemannianAdam([Z], lr=1e-3)
         else:
-            dm = SpinParam.apply_fcn(lambda dm0: dm0.detach(), dm0)
-
-        # making it spin param for polarized and tensor for nonpolarized
-        if isinstance(dm, torch.Tensor) and self._polarized:
-            dm_u = dm * 0.5
-            dm_d = dm * 0.5
-            dm = SpinParam(u=dm_u, d=dm_d)
-        elif isinstance(dm, SpinParam) and not self._polarized:
-            dm = dm.u + dm.d
-
-        if not self._variational:
-            system = self.get_system()
-            h = system.get_hamiltonian()
-            orb_weights = system.get_orbweight(polarized=self._polarized)
-            norb = SpinParam.apply_fcn(lambda orb_weights: len(orb_weights), orb_weights)
-
-            def dm2params(dm: Union[torch.Tensor, SpinParam[torch.Tensor]]) -> \
-                    Tuple[torch.Tensor, torch.Tensor]:
-                pc = SpinParam.apply_fcn(
-                     lambda dm, norb: h.dm2ao_orb_params(SpinParam.sum(dm), norb=norb),
-                     dm, norb)
-                p = SpinParam.apply_fcn(lambda pc: pc[0], pc)
-                c = SpinParam.apply_fcn(lambda pc: pc[1], pc)
-                params = self._engine.pack_aoparams(p)
-                coeffs = self._engine.pack_aoparams(c)
-                return params, coeffs
-
-            def params2dm(params: torch.Tensor, coeffs: torch.Tensor) \
-                    -> Union[torch.Tensor, SpinParam[torch.Tensor]]:
-                p: Union[torch.Tensor, SpinParam[torch.Tensor]] = self._engine.unpack_aoparams(params)
-                c: Union[torch.Tensor, SpinParam[torch.Tensor]] = self._engine.unpack_aoparams(coeffs)
-
-                dm = SpinParam.apply_fcn(
-                    lambda p, c, orb_weights: h.ao_orb_params2dm(p, c, orb_weights, with_penalty=None),
-                    p, c, orb_weights)
-                return dm
+            raise RuntimeError("Unknown optimizer: %s" % fwd_options["method"])
             
-            def fn_wrapped(params, coeffs, penalty, shape):
-                params = torch.tensor(params, dtype=self.dtype, device=self.device)
-                params = params.view(shape, len(params) // shape)
-                energy = self._engine.aoparams2ene(params, coeffs, penalty)
-                return energy.item()
+        out_dm, history = self.optimize(Z, X, occ, ortho_fn, optimizer, fwd_options["maxiter"])
 
-            params0, coeffs0 = dm2params(dm)
-            params0 = params0.detach()
-            coeffs0 = coeffs0.detach()
-
-            n = self._engine._hamilton.get_kinnucl().shape[0]
-            res: torch.Tensor = minimize(
-                fun=fn_wrapped,
-                x0=params0.flatten(),
-                args=(coeffs0, None, n),  # coeffs & with_penalty
-                method=fwd_options['method'],
-                tol=fwd_options['tol'],
-                )
-            
-            min_params0 = torch.tensor(res.x, dtype=self.dtype, device=self.device)
-            min_params0 = min_params0.view(n, len(min_params0) // n)
-                
-            out_dm = params2dm(min_params0, coeffs0)
-            self._dm = out_dm
-        else:
-            system = self.get_system()
-            h = system.get_hamiltonian()
-            orb_weights = system.get_orbweight(polarized=self._polarized)
-            norb = SpinParam.apply_fcn(lambda orb_weights: len(orb_weights), orb_weights)
-
-            def dm2params(dm: Union[torch.Tensor, SpinParam[torch.Tensor]]) -> \
-                    Tuple[torch.Tensor, torch.Tensor]:
-                pc = SpinParam.apply_fcn(
-                     lambda dm, norb: h.dm2ao_orb_params(SpinParam.sum(dm), norb=norb),
-                     dm, norb)
-                p = SpinParam.apply_fcn(lambda pc: pc[0], pc)
-                c = SpinParam.apply_fcn(lambda pc: pc[1], pc)
-                params = self._engine.pack_aoparams(p)
-                coeffs = self._engine.pack_aoparams(c)
-                return params, coeffs
-
-            def params2dm(params: torch.Tensor, coeffs: torch.Tensor) \
-                    -> Union[torch.Tensor, SpinParam[torch.Tensor]]:
-                p: Union[torch.Tensor, SpinParam[torch.Tensor]] = self._engine.unpack_aoparams(params)
-                c: Union[torch.Tensor, SpinParam[torch.Tensor]] = self._engine.unpack_aoparams(coeffs)
-
-                dm = SpinParam.apply_fcn(
-                    lambda p, c, orb_weights: h.ao_orb_params2dm(p, c, orb_weights, with_penalty=None),
-                    p, c, orb_weights)
-                return dm
-
-            params0, coeffs0 = dm2params(dm)
-            params0 = params0.detach()
-            coeffs0 = coeffs0.detach()
-            min_params0: torch.Tensor = xitorch.optimize.minimize(
-                fcn=self._engine.aoparams2ene,
-                # random noise to add the chance of it gets to the minimum, not
-                # a saddle point
-                y0=params0 + torch.randn_like(params0) * 0.03 / params0.numel(),
-                params=(coeffs0, None,),  # coeffs & with_penalty
-                bck_options={**bck_options},
-                **fwd_options).detach()
-
-            if torch.is_grad_enabled():
-                # If the gradient is required, then put it through the minimization
-                # one more time with penalty on the parameters.
-                # The penalty is to keep the Hamiltonian invertible, stabilizing
-                # inverse.
-                # Without the penalty, the Hamiltonian could have 0 eigenvalues
-                # because of the overparameterization of the aoparams.
-                min_dm = params2dm(min_params0, coeffs0)
-                params0, coeffs0 = dm2params(min_dm)
-                min_params0 = xitorch.optimize.minimize(
-                    fcn=self._engine.aoparams2ene,
-                    y0=params0,
-                    params=(coeffs0, 1e-1,),  # coeffs & with_penalty
-                    bck_options={**bck_options},
-                    method="gd",
-                    step=0,
-                    maxiter=0)
-                
-            out_dm = params2dm(min_params0, coeffs0)
-            self._dm = out_dm
-
+        self._dm = out_dm
+        self._X = X
+        self._Z = Z
+        self._occupancy = occ
+        self._nelec = orb_weights.sum()
+        self.history = history
         self._has_run = True
         return self
+    
+    def optimize(self, Z, X, occ, ortho_fn, optimizer, iters) -> BaseQCCalc:
+        
+        def closure():
+            optimizer.zero_grad()
+            C = X @ ortho_fn(Z)
+            P = density_matrix(C, occ)
+            loss = self._engine.dm2energy(P)
+            loss.backward()
+            if isinstance(optimizer, torch.optim.LBFGS):
+                Z.grad = Z.grad.contiguous()
+            return loss
+        
+        history = torch.zeros(iters)
+        for i in range(iters):
+            E = optimizer.step(closure)
+            history[i] = E.item()
+
+        dm = density_matrix(X @ ortho_fn(Z), occ)
+        return dm, history
 
     def energy(self) -> torch.Tensor:
         # returns the total energy of the system
@@ -245,7 +163,7 @@ class SCF_QCCalc(BaseQCCalc):
                                 device=self.device)
             return SpinParam(u=dm0_u, d=dm0_d)
 
-class BaseSCFEngine(xt.EditableModule):
+class BaseSCFEngine(torch.nn.Module):
     @abstractproperty
     def polarized(self) -> bool:
         """
