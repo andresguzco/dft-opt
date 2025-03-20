@@ -5,8 +5,10 @@ import dqc
 import time
 import torch
 import argparse
+import csv
+import os
 
-from pyscf import scf
+from pyscf import scf, dft
 from dft_opt import get_molecule, plot_energy, validate
 ####################################
 
@@ -18,11 +20,11 @@ def main():
     parser = argparse.ArgumentParser(description="Run DFT optimization benchmarks.")
     parser.add_argument("--basis", type=str, default="def2-SVP", help="Basis set to use (e.g., cc-pVDZ)")
     parser.add_argument("--molecule", type=str, required=True, help="Molecule name (e.g., H2O)")
-    parser.add_argument("--xc", type=str, default="lda_x", help="Exchange-correlation functional to use")
-    parser.add_argument("--optimizer", type=str, default="lbfgs", help="Optimizer to use")
+    parser.add_argument("--optimizer", type=str, default="bfgs", help="Optimizer to use")
     parser.add_argument("--ortho", type=str, default="qr", help="Orthogonalization function to use")
     parser.add_argument("--iters", type=int, default=1000, help="Number of iterations")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
+    parser.add_argument("--lr", type=float, default=0.001, help="Learning rate")
     args = parser.parse_args()
     print(f"Parameters: [{args.molecule} / {args.basis} / {args.optimizer} / {args.ortho} / {args.seed}]", flush=True)
     ####################################
@@ -37,7 +39,8 @@ def main():
     # Benchmark with PySCF
     ####################################
     mol, structure = get_molecule(args.molecule, args.basis)
-    mf = scf.RHF(mol)
+    # mf = scf.RHF(mol)
+    mf = dft.UKS(mol, xc="B3LYP")
 
     start_time = time.time()
     pyscf_energy = mf.kernel()
@@ -50,14 +53,40 @@ def main():
     # Solve with MESS
     ####################################
     m = dqc.Mol(structure, basis=args.basis, ao_parameterizer=args.ortho)
-    qc = dqc.HF(system=m)
+    # qc = dqc.HF(system=m)
+    qc = dqc.KS(system=m, xc="HYB_GGA_XC_B3LYP")
 
     start_time = time.time()
-    qc.run(opt_type=args.optimizer, iter=args.iters)
+    qc.run(opt_type=args.optimizer, iter=args.iters, lr=args.lr)
     time_elapsed = (time.time() - start_time) * 1000
 
     print(f"DQC Energy: [{qc.energy():.2f}], Time: [{time_elapsed:.2f} ms]", flush=True)
-    plot_energy(qc.history, args)
+    ####################################
+    filename = f"data/{args.molecule}_{args.basis}_{args.optimizer}.csv"
+
+    if os.path.exists(filename):
+        with open(filename, 'r', newline='') as csvfile:
+            reader = list(csv.reader(csvfile))
+        
+        reader[0].append(f"{args.ortho}")
+        for i, row in enumerate(reader[1:]):
+            row.append(str(qc.history[i].item()))
+        
+        with open(filename, 'w', newline='') as csvfile:
+            writer = csv.writer(csvfile)
+            writer.writerows(reader)
+    else:
+        with open(filename, 'w', newline='') as csvfile:
+            writer = csv.writer(csvfile)
+            writer.writerow([f"{args.ortho}"])
+            for i, val in enumerate(qc.history):
+                writer.writerow([val.item()])
+
+    with open("data/timings.csv", mode='a', newline='') as csvfile:
+        writer = csv.writer(csvfile)
+        writer.writerow([args.molecule, args.basis, args. optimizer, args.ortho, time_elapsed])
+
+    plot_energy(args)
     ####################################
     
     ####################################

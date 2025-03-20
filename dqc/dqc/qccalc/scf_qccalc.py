@@ -3,10 +3,27 @@ from abc import abstractmethod, abstractproperty
 from dqc.system.base_system import BaseSystem
 from dqc.qccalc.base_qccalc import BaseQCCalc
 from dqc.utils.datastruct import SpinParam
-from dft_opt import CayleyStiefel
+from dft_opt import Cayley
 from typing import Optional, Dict, Any, List, Union, Tuple
-import geoopt
+from geoopt import ManifoldParameter
+from geoopt.optim import RiemannianAdam
+from dft_opt.bfgs import BFGS
+from dft_opt.rbfgs import RBFGS
 import torch
+
+
+def matexp(Z):
+    A = torch.tril(Z, -1)
+    X = A - A.T
+    Q = torch.matrix_exp(X)
+    return Q
+
+
+def polar(m):
+    U, _, Vh = torch.linalg.svd (m)
+    u = U @ Vh
+    # p = Vh.T.conj() @ S.diag().to (dtype = m.dtype) @ Vh
+    return  u
 
 
 def qr(Z):
@@ -15,9 +32,11 @@ def qr(Z):
 
 
 def cayley(Z):
-    X = torch.tril(Z, -1) - torch.tril(Z, -1).T
+    A = torch.tril(Z, -1)
+    X = A - A.T
     I = torch.eye(X.shape[0])
     Q = torch.linalg.solve(I + X, I - X)
+    Q = Q @ Q
     return Q
 
 
@@ -33,7 +52,7 @@ def get_X(S):
 
 def occupancy(occupancy, n):
     occ = torch.zeros(n)
-    k = occupancy.size(0)
+    k = occupancy.shape[0]
     occ[:k] = occupancy
     return occ
 
@@ -68,49 +87,64 @@ class SCF_QCCalc(BaseQCCalc):
     def get_system(self) -> BaseSystem:
         return self._engine.get_system()
 
-    def run(self, opt_type, iter) -> BaseQCCalc:
-        fwd_options = {"method": opt_type, "maxiter": iter}
+    def run(self, opt_type, iter, lr) -> BaseQCCalc:
 
         if self._engine._hamilton._aoparamzer == "qr":
             ortho_fn = qr
         elif self._engine._hamilton._aoparamzer == "cayley":
             ortho_fn = cayley
+        elif self._engine._hamilton._aoparamzer == "polar":
+            ortho_fn = polar
+        elif self._engine._hamilton._aoparamzer == "matexp":
+            ortho_fn = matexp
         else:
             raise ValueError("Unknown orthogonalization function: %s" % self._engine._aoparamzer)
 
         n = self._engine._hamilton.get_kinnucl().shape[0]
-        orb_weights = self._engine._system.get_orbweight(polarized=self._polarized)
-        occ = occupancy(orb_weights, n)
         X = get_X(self._engine._hamilton._ovlp)
+        orb_weights = self._engine._system.get_orbweight(polarized=self._polarized)
 
-        if fwd_options["method"] == "adam":
-            Z = torch.nn.Parameter(torch.eye(n, dtype=torch.double))
-            optimizer = torch.optim.Adam([Z])
-        elif fwd_options["method"] == "lbfgs":
-            Z = torch.nn.Parameter(torch.eye(n, dtype=torch.double))
-            optimizer = torch.optim.LBFGS([Z], max_iter = 1, line_search_fn="strong_wolfe")
-        elif fwd_options["method"] == "radam":
-
-            assert self._engine._hamilton._aoparamzer == "cayley", "Riemannian Adam only works with Cayley"
-
-            S = X @ X.T
-            I = torch.eye(n, dtype=torch.double)
-
-            man = CayleyStiefel() 
-            man.set_S(S)
-
-            Z = geoopt.ManifoldParameter(I, manifold=man)
-            optimizer = geoopt.optim.RiemannianAdam([Z], lr=1e-3)
+        if isinstance(orb_weights, SpinParam):
+            occ = (occupancy(orb_weights.u, n), occupancy(orb_weights.d, n))
+            init = torch.randn(2, n, n, dtype=torch.double)
+            nelec = orb_weights.u.sum() + orb_weights.d.sum()
         else:
-            raise RuntimeError("Unknown optimizer: %s" % fwd_options["method"])
+            occ = occupancy(orb_weights, n)
+            init = torch.randn(n, n, dtype=torch.double)
+            nelec = orb_weights.sum()
+
+        if opt_type == "adam":
+            Z = torch.nn.Parameter(init)
+            optimizer = torch.optim.Adam([Z], lr=lr)
+        elif opt_type == "bfgs":
+            Z = torch.nn.Parameter(init)
+            optimizer = BFGS([Z], lr=lr)
+        elif opt_type == "rbfgs":
+            assert self._engine._hamilton._aoparamzer == "cayley", "Riemannian BFGS only works with Cayley"
+            man = Cayley() 
+            man.set_S(X)
+
+            init = man.projx(init)
+            Z = ManifoldParameter(init, manifold=man)
+            optimizer = RBFGS([Z], lr=lr)
+        elif opt_type == "radam":
+            assert self._engine._hamilton._aoparamzer == "cayley", "Riemannian Adam only works with Cayley"
+            man = Cayley() 
+            man.set_S(X)
+
+            init = man.projx(init)
+            Z = ManifoldParameter(init, manifold=man)
+            optimizer = RiemannianAdam([Z], lr=lr)
+        else:
+            raise RuntimeError("Unknown optimizer: %s" % opt_type)
             
-        out_dm, history = self.optimize(Z, X, occ, ortho_fn, optimizer, fwd_options["maxiter"])
+        out_dm, history = self.optimize(Z, X, occ, ortho_fn, optimizer, iter)
 
         self._dm = out_dm
         self._X = X
         self._Z = Z
         self._occupancy = occ
-        self._nelec = orb_weights.sum()
+        self._nelec = nelec
         self.history = history
         self._has_run = True
         return self
@@ -119,20 +153,41 @@ class SCF_QCCalc(BaseQCCalc):
         
         def closure():
             optimizer.zero_grad()
-            C = X @ ortho_fn(Z)
-            P = density_matrix(C, occ)
+            if Z.dim() == 3:
+                Z1 = Z[0, :, :]
+                Z2 = Z[1, :, :]
+                C1 = X @ ortho_fn(Z1)
+                C2 = X @ ortho_fn(Z2)
+                P1 = density_matrix(C1, occ[0])
+                P2 = density_matrix(C2, occ[1])
+                P = P1 + P2
+            else:
+                C = X @ ortho_fn(Z)
+                P = density_matrix(C, occ)
+
             loss = self._engine.dm2energy(P)
             loss.backward()
-            if isinstance(optimizer, torch.optim.LBFGS):
-                Z.grad = Z.grad.contiguous()
             return loss
         
         history = torch.zeros(iters)
         for i in range(iters):
+
+            if isinstance(optimizer, RiemannianAdam) or isinstance(optimizer, RBFGS):
+                Z.data = Z.manifold.projx(Z.data)
+
             E = optimizer.step(closure)
             history[i] = E.item()
+            print(f"Step {i}: {E.item()}", flush=True)
 
-        dm = density_matrix(X @ ortho_fn(Z), occ)
+        if isinstance(optimizer, RiemannianAdam):
+                Z.data = Z.manifold.projx(Z.data)
+
+        if Z.dim() == 3:
+            dm1 = density_matrix(X @ ortho_fn(Z[0, :, :]), occ[0])
+            dm2 = density_matrix(X @ ortho_fn(Z[1, :, :]), occ[1])
+            dm = dm1 + dm2
+        else:
+            dm = density_matrix(X @ ortho_fn(Z), occ)
         return dm, history
 
     def energy(self) -> torch.Tensor:

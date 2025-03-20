@@ -156,9 +156,8 @@ class _KSEngine(BaseSCFEngine):
 
     def dm2energy(self, dm: Union[torch.Tensor, SpinParam[torch.Tensor]]) -> torch.Tensor:
         # calculate the energy given the density matrix
-        dmtot = SpinParam.sum(dm)
-        e_core = self._hamilton.get_e_hcore(dmtot)
-        e_elrep = self._hamilton.get_e_elrep(dmtot)
+        e_core = self._hamilton.get_e_hcore(dm)
+        e_elrep = self._hamilton.get_e_elrep(dm)
         if self.xc is not None:
             e_xc: Union[torch.Tensor, float] = self._hamilton.get_e_xc(dm)
         else:

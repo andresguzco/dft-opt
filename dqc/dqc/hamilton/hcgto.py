@@ -56,8 +56,11 @@ class HamiltonCGTO(BaseHamilton):
         elif aoparamzer == "cayley":
             # warnings.warn("Parametrization with Cayley transform is still at the experimental stage.")
             self._orbparam = CayleyOrbParams
+        elif aoparamzer == "polar":
+            # warnings.warn("Parametrization with polar decomposition is still at the experimental stage.")
+            self._orbparam = CayleyOrbParams
         else:
-            aoparam_opts = ["qr", "matexp", "cayley"]
+            aoparam_opts = ["qr", "matexp", "cayley", "polar"]
             raise RuntimeError(
                 f"Unknown ao parameterizer: {aoparamzer}. Available options are: {aoparam_opts}")
 
@@ -347,7 +350,6 @@ class HamiltonCGTO(BaseHamilton):
         # ao_orb_params: (*BD, nao, norb)
         out = self._orbparam.params2orb(ao_orb_params, ao_orb_coeffs, with_penalty=with_penalty)
 
-
         if with_penalty is None:
             ao_orbq = out
         else:
@@ -383,7 +385,7 @@ class HamiltonCGTO(BaseHamilton):
         # dm @ ao will be used in every case
         dmdmt = (dm + dm.transpose(-2, -1)) * 0.5  # (*BD, nao2, nao2)
         # convert it back to dm in the cgto basis
-        dmdmt = self._orthozer.unconvert_dm(dmdmt)
+        # dmdmt = self._orthozer.unconvert_dm(dmdmt)
 
         # prepare the densinfo components
         dens = torch.empty((*batchshape, ngrid), dtype=self.dtype, device=self.device)

@@ -1,26 +1,22 @@
 #!/bin/bash
-SEEDS=(0 42 123 2279 7931)
+SEEDS=(0 42 123 2279 7931 12345 54321 99999 12531 5234)
+OPTIMIZERS=("bfgs" "adam") # "radam") # 
+ORTHOGONALIZERS=("cayley" "qr" "polar" "matexp")
+MOLECULES=("H2O" "C6H6" "ScCO+")
 
-# Water
-for seed in ${SEEDS[@]}; do
-    sbatch slurm_launcher.slrm main.py --molecule "H2O"  --optimizer "lbfgs" --ortho "qr" --seed $seed
-    sbatch slurm_launcher.slrm main.py --molecule "H2O"  --optimizer "lbfgs" --ortho "cayley" --seed $seed
-    sbatch slurm_launcher.slrm main.py --molecule "H2O"  --optimizer "adam" --ortho "qr" --seed $seed
-    sbatch slurm_launcher.slrm main.py --molecule "H2O"  --optimizer "adam" --ortho "cayley" --seed $seed
-done
 
-# Benzene
 for seed in ${SEEDS[@]}; do
-    sbatch slurm_launcher.slrm main.py --molecule "C6H6"  --optimizer "lbfgs" --ortho "qr" --seed $seed
-    sbatch slurm_launcher.slrm main.py --molecule "C6H6"  --optimizer "lbfgs" --ortho "cayley" --seed $seed
-    sbatch slurm_launcher.slrm main.py --molecule "C6H6"  --optimizer "adam" --ortho "qr" --seed $seed
-    sbatch slurm_launcher.slrm main.py --molecule "C6H6"  --optimizer "adam" --ortho "cayley" --seed $seed
-done
-
-# Graphene
-for seed in ${SEEDS[@]}; do
-    sbatch slurm_launcher.slrm main.py --molecule "graphene"  --optimizer "lbfgs" --ortho "qr" --seed $seed
-    sbatch slurm_launcher.slrm main.py --molecule "graphene"  --optimizer "lbfgs" --ortho "cayley" --seed $seed
-    sbatch slurm_launcher.slrm main.py --molecule "graphene"  --optimizer "adam" --ortho "qr" --seed $seed
-    sbatch slurm_launcher.slrm main.py --molecule "graphene"  --optimizer "adam" --ortho "cayley" --seed $seed
+    for mol in ${MOLECULES[@]}; do
+        for opt in ${OPTIMIZERS[@]}; do
+            for orth in ${ORTHOGONALIZERS[@]}; do
+                sbatch slurm_launcher.slrm main.py \
+                --molecule $mol \
+                --optimizer $opt \
+                --ortho $orth \
+                --seed $seed \
+                --iters 500 \
+                --lr 0.01
+            done
+        done
+    done
 done

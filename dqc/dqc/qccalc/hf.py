@@ -164,14 +164,12 @@ class _HFEngine(BaseSCFEngine):
 
     def dm2energy(self, dm: Union[torch.Tensor, SpinParam[torch.Tensor]]) -> torch.Tensor:
         # calculate the energy given the density matrix
-        e_core = self._hamilton.get_e_hcore(dm)
         e_nuc = self._system.get_nuclei_energy()
-
+        e_core = self._hamilton.get_e_hcore(dm)
         elrep_mat = self._hamilton.get_elrep(dm).fullmatrix()
         exch_mat = self._hamilton.get_exchange(dm).fullmatrix()
         vhf = elrep_mat + exch_mat
         e_coul = 0.5 * torch.einsum("...ij,...ji->...", vhf, dm)
-
         return e_core + e_coul + e_nuc
 
     @overload
