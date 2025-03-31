@@ -1,2 +1,0 @@
-* make davidson more efficient
-* allow more intelligent initial guess for eigendecomposition

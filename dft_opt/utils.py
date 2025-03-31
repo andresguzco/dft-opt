@@ -1,7 +1,7 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 from torch.linalg import qr, solve, inv, svd
-from torch import tril, eye, allclose, trace, einsum, double, matrix_exp
+from torch import tril, eye, allclose, trace, einsum, double, matrix_exp, no_grad
 
 
 def QR(Z):
@@ -75,29 +75,31 @@ def plot_energy(args):
 
 
 def validate(kernel, ortho_fn):
-    Z, X, P = kernel._Z, kernel._X, kernel._dm 
-    S = inv(X @ X.T)
-    I = eye(Z.shape[-1], dtype=double)
+    with no_grad():
+        Z, X, P = kernel._Z, kernel._X, kernel._dm 
+        S = inv(X @ X.T)
+        I = eye(Z.shape[-1], dtype=double)
 
-    if ortho_fn == "cayley":
-        fn = cayley
-    elif ortho_fn == "qr":
-        fn = QR
-    elif ortho_fn == "polar":
-        fn = polar
-    elif ortho_fn == "matexp":
-        fn = matexp
-    else:
-        raise ValueError(f"Unknown orthogonalization function: {ortho_fn}")
-    
-    if Z.dim() != 3:
-        Q = fn(Z)
-        C = X @ Q
-        assert allclose(I, C.T @ S @ C, atol=1e-10), "Q is not orthonormal"
-    else:
-        Q1, Q2 = fn(Z[0, :, :]), fn(Z[1, :, :]) 
-        C1, C2 = X @ Q1, X @ Q2
-        assert allclose(I, C1.T @ S @ C1, atol=1e-10), "Q is not orthonormal"
-        assert allclose(I, C2.T @ S @ C2, atol=1e-10), "Q is not orthonormal"
+        if ortho_fn == "cayley":
+            fn = cayley
+        elif ortho_fn == "qr":
+            fn = QR
+        elif ortho_fn == "polar":
+            fn = polar
+        elif ortho_fn == "matexp":
+            fn = matexp
+        else:
+            raise ValueError(f"Unknown orthogonalization function: {ortho_fn}")
+        
+        if Z.dim() != 3:
+            Q = fn(Z)
+            C = X @ Q
+            assert allclose(I, C.T @ S @ C, atol=1e-10), "Q is not orthonormal"
 
-    assert allclose(kernel._nelec, trace(P @ S), atol=1e-10), f"Trace(P @ S) != N"
+        else:
+            Q1, Q2 = fn(Z[0, :, :]), fn(Z[1, :, :]) 
+            C1, C2 = X @ Q1, X @ Q2
+            assert allclose(I, C1.T @ S @ C1, atol=1e-10), "Q is not orthonormal"
+            assert allclose(I, C2.T @ S @ C2, atol=1e-10), "Q is not orthonormal"
+
+        assert allclose(kernel._nelec, trace(P @ S), atol=1e-10), f"Trace(P @ S) != N"

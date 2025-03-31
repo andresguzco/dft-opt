@@ -1,9 +1,9 @@
 from geoopt.manifolds.base import Manifold
 from geoopt.tensor import ManifoldTensor
 from geoopt.utils import size2shape
-from torch.linalg import solve, svd, inv
+from torch.linalg import solve, svd, pinv
 from typing import Tuple, Optional, Union
-from torch import Tensor, eye, cat, arange, zeros, randn, allclose, einsum, tril
+from torch import Tensor, eye, cat, arange, zeros, randn, allclose, einsum, tril, zeros_like
 
 
 def cayley(Z):
@@ -31,7 +31,7 @@ class Cayley(Manifold):
         return super().__new__(cls)
 
     def set_S(self, X: Tensor):
-        self.L = inv(X.T)
+        self.L = pinv(X.T)
         self.S = self.L @ self.L.T
         return self
     
@@ -64,11 +64,26 @@ class Cayley(Manifold):
         Ret(Z, C1) = [I - ½ W(Z, C1)S]⁻¹ [C1 + 0.5 Z]
         """
 
-        I = eye(Z.shape[-2], device=Z.device, dtype=Z.dtype)
-        WS  = self._compute_W(C, Z) @ self.S
-        lhs = I - 0.5 * WS
-        rhs = C + 0.5 * Z
-        out = solve(lhs, rhs)
+        if C.dim() == 3:
+
+            C1 = C[0, :, :].squeeze()
+            C2 = C[1, :, :].squeeze()
+
+            Z1 = Z[0, :, :].squeeze()
+            Z2 = Z[1, :, :].squeeze()
+
+            out = zeros_like(C)
+            out[0, :, :] = self.retr(C1, Z1)
+            out[1, :, :] = self.retr(C2, Z2)
+
+        else:
+
+            I = eye(Z.shape[-2], device=Z.device, dtype=Z.dtype)
+            WS  = self._compute_W(C, Z) @ self.S
+            lhs = I - 0.5 * WS
+            rhs = C + 0.5 * Z
+            out = solve(lhs, rhs)
+
         return out
     
     expmap = retr
@@ -98,25 +113,70 @@ class Cayley(Manifold):
         Transp_{C1 -> Z}(Y) = [I - ½ W(Z, C1)S]⁻¹ [I - ½ W(Z, C1)S]Y
         Ret(Z, C1) = X_min⁻¹ X_plus Y, where X_min = I - ½ W(Z, C1)S, X_plus = I + ½ W(Z, C1)S
         """
-        I = eye(Z.shape[-2], device=Z.device, dtype=Z.dtype)
-        W = self._compute_W(C, Z)
-        WS = W @ self.S 
-        lhs = I - 0.5 * WS
-        rhs = (I + 0.5 * WS) @ Y
-        qv = solve(lhs, rhs)
+
+        if C.dim() == 3:
+            C1 = C[0, :, :].squeeze()
+            C2 = C[1, :, :].squeeze()
+
+            Z1 = Z[0, :, :].squeeze()
+            Z2 = Z[1, :, :].squeeze()
+
+            Y1 = Y[0, :, :].squeeze()
+            Y2 = Y[1, :, :].squeeze()
+
+            qv = zeros_like(C)
+            qv[0, :, :] = self.transp(C1, Z1, Y1)
+            qv[1, :, :] = self.transp(C2, Z2, Y2)
+
+        else:
+
+            I = eye(Z.shape[-2], device=Z.device, dtype=Z.dtype)
+            W = self._compute_W(C, Z)
+            WS = W @ self.S 
+            lhs = I - 0.5 * WS
+            rhs = (I + 0.5 * WS) @ Y
+            qv = solve(lhs, rhs)
+
         return qv
 
     def retr_transp(self, C: Tensor, Z: Tensor, Y: Tensor) -> Tuple[Tensor, Tensor]:
 
-        assert self._check_point_on_manifold(C)[0] is True, "C is not on the manifold"
-        assert self._check_vector_on_tangent(C, Y)[0] is True, "Y is not on the tangent space"  
-        assert self._check_vector_on_tangent(C, Z)[0] is True, "Z is not on the tangent space"
+        if C.dim() == 3:
+            
 
-        C1Y = cat((C, Y), -1)
-        qxvs = self.transp_follow_retr(C, Z, C1Y).view(
-            C.shape[:-1] + (2, C.shape[-1])
-        )
-        new_x, new_v = qxvs.unbind(-2)
+
+            C1 = C[0, :, :].squeeze()
+            C2 = C[1, :, :].squeeze()
+
+            Z1 = Z[0, :, :].squeeze()
+            Z2 = Z[1, :, :].squeeze()
+
+            Y1 = Y[0, :, :].squeeze()
+            Y2 = Y[1, :, :].squeeze()
+
+            (new_x1, new_v1) = self.retr_transp(C1, Z1, Y1)
+            (new_x2, new_v2) = self.retr_transp(C2, Z2, Y2)
+
+            new_x = zeros_like(C)
+            new_x[0, :, :] = new_x1
+            new_x[1, :, :] = new_x2
+
+            new_v = zeros_like(C)
+            new_v[0, :, :] = new_v1
+            new_v[1, :, :] = new_v2
+
+        else:
+
+            assert self._check_point_on_manifold(C)[0] is True, "C is not on the manifold"
+            assert self._check_vector_on_tangent(C, Y)[0] is True, "Y is not on the tangent space"  
+            assert self._check_vector_on_tangent(C, Z)[0] is True, "Z is not on the tangent space"
+
+            C1Y = cat((C, Y), -1)
+            qxvs = self.transp_follow_retr(C, Z, C1Y).view(
+                C.shape[:-1] + (2, C.shape[-1])
+            )
+            new_x, new_v = qxvs.unbind(-2)
+
         return new_x, new_v
 
     expmap_transp = retr_transp
@@ -126,18 +186,34 @@ class Cayley(Manifold):
         Project the gradient G onto the tangent space of the Stiefel manifold at C1:
             G* = S^{-1} G - C1 (0.5 (C1ᵀ G + Gᵀ C1))
         """
-        lhs = inv(self.S) @ G
-        C1TG = C.T @ G
-        GTC1 = G.T @ C
-        rhs = C @ (0.5 * (C1TG + GTC1))
-        G_bar = lhs - rhs
+        if G.dim() == 3:
+            G1 = G[0, :, :].squeeze(0)
+            G2 = G[1, :, :].squeeze(0)
+    
+            C1 = C[0, :, :].squeeze(0)
+            C2 = C[1, :, :].squeeze(0)
 
-        assert self._check_vector_on_tangent(C, G_bar)[0] is True, "G_bar is not on the tangent space"
+            G1_r = self.proju(C1, G1)
+            G2_r = self.proju(C2, G2)
+        
+            G_bar = zeros_like(G)
+            G_bar[0, :, :] = G1_r
+            G_bar[1, :, :] = G2_r
+        
+        else:
 
+            lhs = pinv(self.S) @ G
+            C1TG = C.T @ G
+            GTC1 = G.T @ C
+            rhs = C @ (0.5 * (C1TG + GTC1))
+            G_bar = lhs - rhs
+
+            assert self._check_vector_on_tangent(C, G_bar)[0] is True, "G_bar is not on the tangent space"
         return G_bar
 
     egrad2rgrad = proju
     
+
     def inner(self, x: Tensor, U: Tensor, V: Tensor = None, *, keepdim=False) -> Tensor:
         """
         Inner product for the Stiefel manifold with metric:
@@ -146,8 +222,25 @@ class Cayley(Manifold):
         if V is None:
             V = U
 
-        arg = U.T @ (self.S @ V)
-        return arg.sum([-1, -2], keepdim=keepdim)
+        if U.dim() == 3:
+            U1 = U[0, :, :].squeeze()
+            U2 = U[1, :, :].squeeze()
+            V1 = V[0, :, :].squeeze()
+            V2 = V[1, :, :].squeeze()
+
+            inner_1 = self.inner(x, U1, V1)
+            inner_2 = self.inner(x, U2, V2)
+
+            out = zeros_like(U)
+            out[0, :, :] = inner_1
+            out[1, :, :] = inner_2
+
+        elif U.dim() == 2:
+
+            arg = U.T @ (self.S @ V)
+            out = arg.sum([-1, -2], keepdim=keepdim)
+
+        return out
     
 
     ####################################
@@ -157,7 +250,7 @@ class Cayley(Manifold):
         Y = self.L @ X
         U, _, V = svd(Y, full_matrices=False)
         Q = einsum("...ik,...kj->...ij", U, V)
-        C = inv(self.L).T @ Q
+        C = pinv(self.L).T @ Q
 
         assert self._check_point_on_manifold(C)[0] is True, "C was not projected to the manifold"
 

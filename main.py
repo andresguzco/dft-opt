@@ -25,6 +25,7 @@ def main():
     parser.add_argument("--iters", type=int, default=1000, help="Number of iterations")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument("--lr", type=float, default=0.001, help="Learning rate")
+    parser.add_argument("--benchmark", action="store_true", help="Run PySCF benchmark")
     args = parser.parse_args()
     print(f"Parameters: [{args.molecule} / {args.basis} / {args.optimizer} / {args.ortho} / {args.seed}]", flush=True)
     ####################################
@@ -39,22 +40,23 @@ def main():
     # Benchmark with PySCF
     ####################################
     mol, structure = get_molecule(args.molecule, args.basis)
-    # mf = scf.RHF(mol)
-    mf = dft.UKS(mol, xc="B3LYP")
+    if args.benchmark:
+        mf = scf.RHF(mol)
+        # mf = dft.UKS(mol, xc="B3LYP")
 
-    start_time = time.time()
-    pyscf_energy = mf.kernel()
-    pyscf_time = (time.time() - start_time) * 1000
+        start_time = time.time()
+        pyscf_energy = mf.kernel()
+        pyscf_time = (time.time() - start_time) * 1000
 
-    print(f"PySCF Energy: [{pyscf_energy:.2f}], Time: [{pyscf_time:.2f} ms]", flush=True)
+        print(f"PySCF Energy: [{pyscf_energy:.2f}], Time: [{pyscf_time:.2f} ms]", flush=True)
     ####################################
     
     ####################################
     # Solve with MESS
     ####################################
     m = dqc.Mol(structure, basis=args.basis, ao_parameterizer=args.ortho)
-    # qc = dqc.HF(system=m)
-    qc = dqc.KS(system=m, xc="HYB_GGA_XC_B3LYP")
+    qc = dqc.HF(system=m)
+    # qc = dqc.KS(system=m, xc="HYB_GGA_XC_B3LYP")
 
     start_time = time.time()
     qc.run(opt_type=args.optimizer, iter=args.iters, lr=args.lr)

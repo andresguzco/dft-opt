@@ -1,6 +1,6 @@
 import torch
 from torch import eye, zeros, float64, no_grad, outer
-from torch.linalg import inv
+from torch.linalg import pinv
 from torch.optim.optimizer import Optimizer
 from geoopt.tensor import ManifoldParameter, ManifoldTensor
 
@@ -24,20 +24,21 @@ class RBFGS(Optimizer):
 
         group = self.param_groups[0]
         lr = group["lr"]
-        p = group["params"][0]
-        manifold = p.manifold
+        point = group["params"][0]
+        manifold = point.manifold
 
         with no_grad():
-            rgrad = manifold.egrad2rgrad(p, p.grad)
+            egrad = point.grad
+            rgrad = manifold.egrad2rgrad(point, egrad)
 
             if self.first_step:
                 direction = rgrad.view(-1)
                 self.first_step = False
             else:
-                transp_old_rgrad = manifold.transp(p, rgrad, self.old_rgrad)
+                transp_old_rgrad = manifold.transp(point, rgrad, self.old_rgrad)
                 y_k = rgrad.reshape(-1) - transp_old_rgrad.reshape(-1)
 
-                p_data_flat = p.data.reshape(-1).double()
+                p_data_flat = point.data.reshape(-1).double()
                 s_k = p_data_flat - self.old_p.reshape(-1)
 
                 Hs = self.H_k @ s_k
@@ -45,17 +46,15 @@ class RBFGS(Optimizer):
                 term2 = outer(Hs, Hs) / s_k.dot(Hs)
                 self.H_k.add_(term1).sub(term2)
 
-                H_inv = inv(self.H_k)
+                H_inv = pinv(self.H_k)
                 direction = H_inv @ rgrad.view(-1)
 
-            direction_reshaped = direction.view_as(p.data)
-            new_p = manifold.retr(p, -lr * direction_reshaped)
-            p.data.copy_(new_p)
+            direction_reshaped = direction.view_as(point.data)
+            new_p = manifold.retr(point, -lr * direction_reshaped)
+            point.data.copy_(new_p)
 
-            self.old_p = p.data.clone()
+            self.old_p = point.data.clone()
             self.old_rgrad = rgrad.clone()
-
-            print
 
         return loss
 

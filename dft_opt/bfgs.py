@@ -1,5 +1,5 @@
 from torch import eye, zeros, float64, no_grad, outer
-from torch.linalg import inv
+from torch.linalg import pinv
 from torch.optim.optimizer import Optimizer
 
 class BFGS(Optimizer):
@@ -40,7 +40,7 @@ class BFGS(Optimizer):
                 term2 = outer(Hk_s_k, Hk_s_k) / s_k.dot(Hk_s_k)
 
                 self.H_k = self.H_k + term1 - term2
-                H_inv = inv(self.H_k)
+                H_inv = pinv(self.H_k)
 
                 p_k = H_inv @ grad_flat
 

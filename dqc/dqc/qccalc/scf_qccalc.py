@@ -105,7 +105,14 @@ class SCF_QCCalc(BaseQCCalc):
         orb_weights = self._engine._system.get_orbweight(polarized=self._polarized)
 
         if isinstance(orb_weights, SpinParam):
-            occ = (occupancy(orb_weights.u, n), occupancy(orb_weights.d, n))
+            occ = torch.zeros(2, n)
+
+            occ_u = occupancy(orb_weights.u, n)
+            occ_d = occupancy(orb_weights.d, n)
+
+            occ[0, :len(occ_u)] = occ_u
+            occ[1, :len(occ_d)] = occ_d
+
             init = torch.randn(2, n, n, dtype=torch.double)
             nelec = orb_weights.u.sum() + orb_weights.d.sum()
         else:
@@ -113,28 +120,22 @@ class SCF_QCCalc(BaseQCCalc):
             init = torch.randn(n, n, dtype=torch.double)
             nelec = orb_weights.sum()
 
-        if opt_type == "adam":
+        if opt_type == "adam" or opt_type == "bfgs":
             Z = torch.nn.Parameter(init)
-            optimizer = torch.optim.Adam([Z], lr=lr)
-        elif opt_type == "bfgs":
-            Z = torch.nn.Parameter(init)
-            optimizer = BFGS([Z], lr=lr)
-        elif opt_type == "rbfgs":
+            optimizer = BFGS([Z], lr=lr) if opt_type == "bfgs" else torch.optim.Adam([Z], lr=lr) 
+        elif opt_type == "rbfgs" or opt_type == "radam":
             assert self._engine._hamilton._aoparamzer == "cayley", "Riemannian BFGS only works with Cayley"
             man = Cayley() 
             man.set_S(X)
 
-            init = man.projx(init)
-            Z = ManifoldParameter(init, manifold=man)
-            optimizer = RBFGS([Z], lr=lr)
-        elif opt_type == "radam":
-            assert self._engine._hamilton._aoparamzer == "cayley", "Riemannian Adam only works with Cayley"
-            man = Cayley() 
-            man.set_S(X)
+            if init.dim() == 3:
+                init[0, :, :] = man.projx(init[0, :, :])
+                init[1, :, :] = man.projx(init[1, :, :])
+            else:
+                init = man.projx(init)
 
-            init = man.projx(init)
             Z = ManifoldParameter(init, manifold=man)
-            optimizer = RiemannianAdam([Z], lr=lr)
+            optimizer = RBFGS([Z], lr=lr) if opt_type == "rbfgs" else RiemannianAdam([Z], lr=lr)
         else:
             raise RuntimeError("Unknown optimizer: %s" % opt_type)
             
@@ -153,15 +154,24 @@ class SCF_QCCalc(BaseQCCalc):
         
         def closure():
             optimizer.zero_grad()
+
             if Z.dim() == 3:
-                Z1 = Z[0, :, :]
-                Z2 = Z[1, :, :]
+
+                occ1 = occ[0, :].squeeze()
+                occ2 = occ[1, :].squeeze()
+
+                Z1 = Z[0, :, :].squeeze()
+                Z2 = Z[1, :, :].squeeze()
+
                 C1 = X @ ortho_fn(Z1)
                 C2 = X @ ortho_fn(Z2)
-                P1 = density_matrix(C1, occ[0])
-                P2 = density_matrix(C2, occ[1])
+
+                P1 = density_matrix(C1, occ1)
+                P2 = density_matrix(C2, occ2)
                 P = P1 + P2
+
             else:
+                
                 C = X @ ortho_fn(Z)
                 P = density_matrix(C, occ)
 
@@ -173,21 +183,33 @@ class SCF_QCCalc(BaseQCCalc):
         for i in range(iters):
 
             if isinstance(optimizer, RiemannianAdam) or isinstance(optimizer, RBFGS):
-                Z.data = Z.manifold.projx(Z.data)
+
+                if Z.dim() == 3:
+                    Z.data[0, :, :] = Z.manifold.projx(Z.data[0, :, :])
+                    Z.data[1, :, :] = Z.manifold.projx(Z.data[1, :, :])
+                else:
+                    Z.data = Z.manifold.projx(Z.data)
 
             E = optimizer.step(closure)
             history[i] = E.item()
-            print(f"Step {i}: {E.item()}", flush=True)
-
-        if isinstance(optimizer, RiemannianAdam):
-                Z.data = Z.manifold.projx(Z.data)
 
         if Z.dim() == 3:
-            dm1 = density_matrix(X @ ortho_fn(Z[0, :, :]), occ[0])
-            dm2 = density_matrix(X @ ortho_fn(Z[1, :, :]), occ[1])
+            
+            if isinstance(optimizer, RiemannianAdam):
+                Z.data[0, :, :] = Z.manifold.projx(Z.data[0, :, :])
+                Z.data[1, :, :] = Z.manifold.projx(Z.data[1, :, :])
+
+            dm1 = density_matrix(X @ ortho_fn(Z[0, :, :]), occ[0, :].squeeze())
+            dm2 = density_matrix(X @ ortho_fn(Z[1, :, :]), occ[1, :].squeeze())
             dm = dm1 + dm2
+
         else:
+
+            if isinstance(optimizer, RiemannianAdam):
+                Z.data = Z.manifold.projx(Z.data)
+
             dm = density_matrix(X @ ortho_fn(Z), occ)
+
         return dm, history
 
     def energy(self) -> torch.Tensor:

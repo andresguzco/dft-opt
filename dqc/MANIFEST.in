@@ -1,4 +1,0 @@
-include MANIFEST.in
-include README.md setup.py LICENSE NOTICE
-
-global-exclude *.py[cod]
