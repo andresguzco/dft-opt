@@ -1,3 +1,5 @@
 from .molecules import *
-from .plotting import *
-from .opt import *
+from .manifold import *
+from .utils import *
+from .rbfgs import *
+from .bfgs import *
