@@ -72,7 +72,7 @@ def main():
             reader = list(csv.reader(csvfile))
         
         reader[0].append(f"{args.ortho}")
-        for i, row in enumerate(reader[1:]):
+        for i, row in enumerate(reader[1:-1]):
             row.append(str(qc.history[i].item()))
         
         with open(filename, 'w', newline='') as csvfile:

@@ -31,33 +31,24 @@ class RBFGS(Optimizer):
             egrad = point.grad
             rgrad = manifold.egrad2rgrad(point, egrad)
 
-            if self.first_step:
-                direction = rgrad.view(-1)
+            if self.first_step: 
+                eta_k = rgrad
                 self.first_step = False
             else:
-                transp_old_rgrad = manifold.transp(point, rgrad, self.old_rgrad)
-                y_k = rgrad.reshape(-1) - transp_old_rgrad.reshape(-1)
+                eta_k = (self.H_k @ rgrad.view(-1)).view_as(point.data)
+                s_k = manifold.tranp(lr * eta_k)
+                y_k = rgrad - manifold.transp(self.old_rgrad)
 
-                p_data_flat = point.data.reshape(-1).double()
-                s_k = p_data_flat - self.old_p.reshape(-1)
+                new_p = manifold.retr(point, -lr * eta_k)
+                point.data.copy_(new_p)
 
-                Hs = self.H_k @ s_k
-                term1 = outer(y_k, y_k) / y_k.dot(s_k)
-                term2 = outer(Hs, Hs) / s_k.dot(Hs)
-                self.H_k.add_(term1).sub(term2)
-
-                H_inv = pinv(self.H_k)
-                direction = H_inv @ rgrad.view(-1)
-
-            direction_reshaped = direction.view_as(point.data)
-            new_p = manifold.retr(point, -lr * direction_reshaped)
-            point.data.copy_(new_p)
-
-            self.old_p = point.data.clone()
-            self.old_rgrad = rgrad.clone()
+                self.old_p = point.data.detach().clone()
+                self.old_rgrad = rgrad.detach().clone()
 
         return loss
 
+
+ 
 
     @torch.no_grad()
     def stabilize_group(self, group):

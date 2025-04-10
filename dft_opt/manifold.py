@@ -110,7 +110,7 @@ class Cayley(Manifold):
         """
         Transport map from C1 to Z based of vector Y:
         
-        Transp_{C1 -> Z}(Y) = [I - ½ W(Z, C1)S]⁻¹ [I - ½ W(Z, C1)S]Y
+        Transp_{C1 -> Z}(Y) = [I - ½ W(Z, C1)S]⁻¹ [I + ½ W(Z, C1)S]Y
         Ret(Z, C1) = X_min⁻¹ X_plus Y, where X_min = I - ½ W(Z, C1)S, X_plus = I + ½ W(Z, C1)S
         """
 
