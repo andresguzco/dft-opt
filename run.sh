@@ -1,8 +1,8 @@
 #!/bin/bash
-SEEDS=(0 42 123 2279 7931)
+SEEDS=(0 42 123 2279 7931 12345 54321 99999 100000 100001)
 OPTIMIZERS=("adam" "bfgs") # "radam") # "rbfgs") #
 ORTHOGONALIZERS=("cayley" "qr" "polar" "matexp")
-MOLECULES=("ScCO+" "H2O" "C6H6")
+MOLECULES=("CH" "OH" "NiCH2+" "CoCO+" "NiCO+" "ScCO+" "Fe(CO)2+")
 
 for seed in ${SEEDS[@]}; do
   for mol in ${MOLECULES[@]}; do

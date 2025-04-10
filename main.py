@@ -25,7 +25,8 @@ def main():
     parser.add_argument("--iters", type=int, default=1000, help="Number of iterations")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument("--lr", type=float, default=0.001, help="Learning rate")
-    parser.add_argument("--benchmark", action="store_true", help="Run PySCF benchmark")
+    parser.add_argument("--benchmark", action="store_true", help="Run PySCF benchmark")    
+    parser.add_argument("--disable_tex", action="store_true", default=False, help="Disable TeX rendering in matplotlib.")
     args = parser.parse_args()
     print(f"Parameters: [{args.molecule} / {args.basis} / {args.optimizer} / {args.ortho} / {args.seed}]", flush=True)
     ####################################
