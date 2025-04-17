@@ -37,7 +37,7 @@ def density_matrix(C, occupancy):
     return einsum("k,ik,jk->ij", occupancy, C, C)
 
 
-def plot_energy(args):
+def plot_energy(args, real_val):
     df = pd.read_csv(f'data/{args.molecule}_{args.basis}_{args.optimizer}.csv')
 
     grouped_cols = {}
@@ -47,6 +47,9 @@ def plot_energy(args):
 
     iterations = df.index
     filename = f"{args.molecule}_{args.basis}_{args.optimizer}"
+
+
+
     with plt.rc_context(bundles.neurips2023(rel_width=1.0, usetex=not args.disable_tex)):
         fig, ax = plt.subplots(1, 1)
         ax.set_xlabel("Iteration")
@@ -55,6 +58,7 @@ def plot_energy(args):
         # ax.set_yscale("log")
         ax.set_title(f"Energy - [{args.molecule} / {args.basis} / {args.optimizer}]")
         ax.grid(True, alpha=0.5)
+        plt.axhline(y=real_val, color='r', linestyle='-')
 
         for base_name, cols in grouped_cols.items():
             if len(cols) > 1:

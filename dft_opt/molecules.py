@@ -4,10 +4,10 @@ from pyscf import gto
 
 def get_molecule(name, basis):
     info = PYSCF_MAP[name]
-    charge = 1 if '+' in name else 0
+    charge = 0 if name == "Fe(CO)2+" else 1 if '+' in name else 0
     mol = gto.M(atom=info, basis=basis, charge=charge)
     mol.verbose = 0
-    mol.spin = 0
+    mol.spin = 2 if name == "Fe(CO)2+" else 0
     atomzs = [val[0] for val in info]
     atompos = torch.cat([torch.tensor(val[1]) for val in info], dim=0).view(-1, 3)
     structure = (atomzs, atompos)

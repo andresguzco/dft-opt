@@ -3,12 +3,13 @@ from abc import abstractmethod, abstractproperty
 from dqc.system.base_system import BaseSystem
 from dqc.qccalc.base_qccalc import BaseQCCalc
 from dqc.utils.datastruct import SpinParam
-from dft_opt import Cayley
+from dft_opt import Cayley, QR
 from typing import Optional, Dict, Any, List, Union, Tuple
 from geoopt import ManifoldParameter
 from geoopt.optim import RiemannianAdam
 from dft_opt.bfgs import BFGS
 from dft_opt.rbfgs import RBFGS
+from tqdm import tqdm
 import torch
 
 
@@ -122,10 +123,11 @@ class SCF_QCCalc(BaseQCCalc):
 
         if opt_type == "adam" or opt_type == "bfgs":
             Z = torch.nn.Parameter(init)
-            optimizer = BFGS([Z], lr=lr) if opt_type == "bfgs" else torch.optim.Adam([Z], lr=lr) 
+            optimizer = torch.optim.LBFGS([Z], line_search_fn="strong_wolfe", max_iter=1) if opt_type == "bfgs" else torch.optim.Adam([Z], lr=lr) 
+            # optimizer = BFGS([Z], lr=lr) if opt_type == "bfgs" else torch.optim.Adam([Z], lr=lr) 
         elif opt_type == "rbfgs" or opt_type == "radam":
-            assert self._engine._hamilton._aoparamzer == "cayley", "Riemannian BFGS only works with Cayley"
-            man = Cayley() 
+            assert self._engine._hamilton._aoparamzer in ["cayley", "qr"], "Riemannian BFGS only works with Cayley"
+            man = Cayley() if self._engine._hamilton._aoparamzer == "cayley" else QR()
             man.set_S(X)
 
             if init.dim() == 3:
@@ -180,7 +182,7 @@ class SCF_QCCalc(BaseQCCalc):
             return loss
         
         history = torch.zeros(iters)
-        for i in range(iters):
+        for i in (pbar := tqdm(range(iters))):
 
             if isinstance(optimizer, RiemannianAdam) or isinstance(optimizer, RBFGS):
 
@@ -192,7 +194,7 @@ class SCF_QCCalc(BaseQCCalc):
             
             E = optimizer.step(closure)
             history[i] = E.item()
-            print(f"Iter [{i+1}/{iters}] - Energy: {E.item():.6f}")
+            pbar.set_description(f"Iter [{i}/{iters}] - Energy: {E.item():.6f}")
 
         if Z.dim() == 3:
             

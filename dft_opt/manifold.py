@@ -4,7 +4,7 @@ from geoopt.utils import size2shape
 from torch.linalg import solve, svd, pinv
 from typing import Tuple, Optional, Union
 from torch import Tensor, eye, cat, arange, zeros, randn, allclose, einsum, tril, zeros_like
-
+import torch
 
 def cayley(Z):
     X = tril(Z, -1) - tril(Z, -1).T
@@ -56,7 +56,9 @@ class Cayley(Manifold):
         P = self._compute_P(C)
         A = P @ Z @ C.T
         return A - A.T
-
+    ####################################
+    # Projection and retraction
+    ####################################
     def retr(self, C: Tensor, Z: Tensor) -> Tensor:
         """
         Retraction based on the Cayley transform:
@@ -187,18 +189,9 @@ class Cayley(Manifold):
             G* = S^{-1} G - C1 (0.5 (C1ᵀ G + Gᵀ C1))
         """
         if G.dim() == 3:
-            G1 = G[0, :, :].squeeze(0)
-            G2 = G[1, :, :].squeeze(0)
-    
-            C1 = C[0, :, :].squeeze(0)
-            C2 = C[1, :, :].squeeze(0)
-
-            G1_r = self.proju(C1, G1)
-            G2_r = self.proju(C2, G2)
-        
             G_bar = zeros_like(G)
-            G_bar[0, :, :] = G1_r
-            G_bar[1, :, :] = G2_r
+            G_bar[0, :, :] = self.proju(C[0, :, :].squeeze(0), G[0, :, :].squeeze(0))
+            G_bar[1, :, :] = self.proju(C[1, :, :].squeeze(0), G[1, :, :].squeeze(0))
         
         else:
 
@@ -213,7 +206,6 @@ class Cayley(Manifold):
 
     egrad2rgrad = proju
     
-
     def inner(self, x: Tensor, U: Tensor, V: Tensor = None, *, keepdim=False) -> Tensor:
         """
         Inner product for the Stiefel manifold with metric:
@@ -223,34 +215,27 @@ class Cayley(Manifold):
             V = U
 
         if U.dim() == 3:
-            U1 = U[0, :, :].squeeze()
-            U2 = U[1, :, :].squeeze()
-            V1 = V[0, :, :].squeeze()
-            V2 = V[1, :, :].squeeze()
-
-            inner_1 = self.inner(x, U1, V1)
-            inner_2 = self.inner(x, U2, V2)
-
             out = zeros_like(U)
-            out[0, :, :] = inner_1
-            out[1, :, :] = inner_2
+            out[0, :, :] = self.inner(x, U[0, :, :].squeeze(), V[0, :, :].squeeze())
+            out[1, :, :] = self.inner(x, U[1, :, :].squeeze(), V[1, :, :].squeeze())
 
-        elif U.dim() == 2:
-
+        else:
             arg = U.T @ (self.S @ V)
             out = arg.sum([-1, -2], keepdim=keepdim)
 
-        return out
-    
+        return out 
 
-    ####################################
-    # Check projection and retraction
-    ####################################
     def projx(self, X: Tensor) -> Tensor:
-        Y = self.L @ X
-        U, _, V = svd(Y, full_matrices=False)
-        Q = einsum("...ik,...kj->...ij", U, V)
-        C = pinv(self.L).T @ Q
+
+        if X.dim() == 3:
+            C = zeros_like(X)
+            C[0, :, :] = self.projx(X[0, :, :].squeeze(0))
+            C[1, :, :] = self.projx(X[1, :, :].squeeze(0))
+        else:
+            Y = self.L @ X
+            U, _, V = svd(Y, full_matrices=False)
+            Q = einsum("...ik,...kj->...ij", U, V)
+            C = pinv(self.L).T @ Q
 
         assert self._check_point_on_manifold(C)[0] is True, "C was not projected to the manifold"
 
@@ -260,6 +245,7 @@ class Cayley(Manifold):
     # Checks for the Stiefel manifold
     ####################################
     def _check_shape(
+
         self, shape: Tuple[int], name: str
     ) -> Union[Tuple[bool, Optional[str]], bool]:
         ok, reason = super()._check_shape(shape, name)
@@ -311,5 +297,166 @@ class Cayley(Manifold):
         eye[..., arange(eye.shape[-1]), arange(eye.shape[-1])] += 1
         return ManifoldTensor(eye, manifold=self)
     
+
+
+class QR(Manifold):
+    __doc__ = """
+
+    Manifold induced by the following matrix constraint:
+
+    .. math::
+
+        C^\top S C = I\\
+        C, S \in \mathrm{R}^{n\times n}\\
+    """
+    name = "QR"
+    reversible = True
+    ndim = 2
+
+    def __new__(cls):
+        return super().__new__(cls)
+
+    def set_S(self, X: Tensor):
+        self.L = pinv(X.T)
+        self.S = self.L @ self.L.T
+        return self
+    
+    ####################################
+    # Checks for the Stiefel manifold
+    ####################################
+    def _check_shape(
+        self, shape: Tuple[int], name: str
+    ) -> Union[Tuple[bool, Optional[str]], bool]:
+        ok, reason = super()._check_shape(shape, name)
+        if not ok:
+            return False, reason
+        shape_is_ok = shape[-1] <= shape[-2]
+        if not shape_is_ok:
+            return (
+                False,
+                "`{}` should have shape[-1] <= shape[-2], got {} </= {}".format(
+                    name, shape[-1], shape[-2]
+                ),
+            )
+        return True, None
+
+    def _check_point_on_manifold(
+        self, x: torch.Tensor, *, atol=1e-5, rtol=1e-5
+    ) -> Union[Tuple[bool, Optional[str]], bool]:
+        xtx = x.transpose(-1, -2) @ x
+        # less memory usage for substract diagonal
+        xtx[..., torch.arange(x.shape[-1]), torch.arange(x.shape[-1])] -= 1
+        ok = torch.allclose(xtx, xtx.new((1,)).fill_(0), atol=atol, rtol=rtol)
+        if not ok:
+            return False, "`X^T X != I` with atol={}, rtol={}".format(atol, rtol)
+        return True, None
+
+    def _check_vector_on_tangent(
+        self, x: torch.Tensor, u: torch.Tensor, *, atol=1e-5, rtol=1e-5
+    ) -> Union[Tuple[bool, Optional[str]], bool]:
+        diff = u.transpose(-1, -2) @ x + x.transpose(-1, -2) @ u
+        ok = torch.allclose(diff, diff.new((1,)).fill_(0), atol=atol, rtol=rtol)
+        if not ok:
+            return False, "`u^T x + x^T u !=0` with atol={}, rtol={}".format(atol, rtol)
+        return True, None
+
+    ####################################
+    # Methods to sample and get origin
+    ####################################
+    def random_naive(self, *size, dtype=None, device=None) -> torch.Tensor:
+        self._assert_check_shape(size2shape(*size), "x")
+        tens = torch.randn(*size, device=device, dtype=dtype)
+        return ManifoldTensor(linalg.qr(tens)[0], manifold=self)
+
+    random = random_naive
+
+    def origin(self, *size, dtype=None, device=None, seed=42) -> torch.Tensor:
+        self._assert_check_shape(size2shape(*size), "x")
+        eye = torch.zeros(*size, dtype=dtype, device=device)
+        eye[..., torch.arange(eye.shape[-1]), torch.arange(eye.shape[-1])] += 1
+        return ManifoldTensor(eye, manifold=self)
+
+    ####################################
+    # Method to project and retract
+    ####################################
+
+    def projx(self, x: torch.Tensor) -> torch.Tensor:
+        if X.dim() == 3:
+            C = zeros_like(X)
+            C[0, :, :] = self.projx(X[0, :, :].squeeze(0))
+            C[1, :, :] = self.projx(X[1, :, :].squeeze(0))
+        else:
+            U, _, V = linalg.svd(x, full_matrices=False)
+            C = torch.einsum("...ik,...kj->...ij", U, V)
+
+        return C
+
+    def proju(self, x: torch.Tensor, u: torch.Tensor) -> torch.Tensor:
+        if x.dim() == 3:
+            G_bar = torch.zeros_like(x)
+            G_bar[0, :, :] = self.proju(x[0, :, :].squeeze(), u[0, :, :].squeeze())
+            G_bar[1, :, :] = self.proju(x[1, :, :].squeeze(), u[1, :, :].squeeze())
+
+        else:
+             G_bar = u - x @ linalg.sym(x.transpose(-1, -2) @ u)
+ 
+        return G_bar
+
+    egrad2rgrad = proju
+
+    def transp(self, x: torch.Tensor, y: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
+        if x.dim() == 3:
+            out = torch.zeros_like(x)
+            out[0, :, :] = self.transp(x[0, :, :].squeeze(), y[0, :, :].squeeze(), v[0, :, :].squeeze())
+            out[1, :, :] = self.transp(x[1, :, :].squeeze(), y[1, :, :].squeeze(), v[1, :, :].squeeze())
+ 
+        else:
+            out = self.proju(y, v)
+
+        return out
+
+    def inner(
+        self, x: torch.Tensor, u: torch.Tensor, v: torch.Tensor = None, *, keepdim=False
+    ) -> torch.Tensor:
+        if v is None:
+            v = u
+
+        if u.dim() == 3:
+            out = zeros_like(u)
+            out[0, :, :] = self.inner(x, u[0, :, :].squeeze(), v[0, :, :].squeeze())
+            out[1, :, :] = self.inner(x, u[1, :, :].squeeze(), v[1, :, :].squeeze())
+
+        else:
+            out = (u * v).sum([-1, -2], keepdim=keepdim)
+
+        return out
+
+    def retr(self, x: torch.Tensor, u: torch.Tensor) -> torch.Tensor:
+        if x.dim() == 3:
+            q = zeros_like(x)
+            q[0, :, :] = self.retr(x[0, :, :].squeeze(), u[0, :, :].squeeze())
+            q[1, :, :] = self.retr(x[1, :, :].squeeze(), u[1, :, :].squeeze())
+        else:
+            q, r = linalg.qr(x + u)
+            unflip = linalg.extract_diag(r).sign().add(0.5).sign()
+            q *= unflip[..., None, :]
+        return q
+
+    def expmap(self, x: torch.Tensor, u: torch.Tensor) -> torch.Tensor:
+        if x.dim() == 3:
+            y = zeros_like(x)
+            y[0, :, :] = self.expmap(x[0, :, :].squeeze(), u[0, :, :].squeeze())
+            y[1, :, :] = self.expmap(x[1, :, :].squeeze(), u[1, :, :].squeeze())
+        else:
+            xtu = x.transpose(-1, -2) @ u
+            utu = u.transpose(-1, -2) @ u
+            eye = torch.zeros_like(utu)
+            eye[..., torch.arange(utu.shape[-2]), torch.arange(utu.shape[-2])] += 1
+            logw = linalg.block_matrix(((xtu, -utu), (eye, xtu)))
+            w = linalg.expm(logw)
+            z = torch.cat((linalg.expm(-xtu), torch.zeros_like(utu)), dim=-2)
+            y = torch.cat((x, u), dim=-1) @ w @ z
+        return y
+
 
 # TODO: Implement Grassmanian manifold with it's polar map

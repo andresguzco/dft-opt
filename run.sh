@@ -1,5 +1,5 @@
 #!/bin/bash
-SEEDS=(0 42 123 2279 7931 12345 54321 99999 100000 100001)
+SEEDS=(0 42 123 2279 7931)
 OPTIMIZERS=("adam" "bfgs") # "radam") # "rbfgs") #
 ORTHOGONALIZERS=("cayley" "qr" "polar" "matexp")
 MOLECULES=("CH" "OH" "NiCH2+" "CoCO+" "NiCO+" "ScCO+" "Fe(CO)2+")

@@ -26,6 +26,8 @@ def get_libxc(name: str) -> BaseXC:
     obj = pylibxc.LibXCFunctional(name, "unpolarized")
     family = obj.get_family()
     del obj
+    if family == 32:
+        family = 2
     if family == 1:  # LDA
         return LibXCLDA(name)
     elif family == 2:  # GGA
